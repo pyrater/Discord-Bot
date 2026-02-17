@@ -28,6 +28,8 @@ class TranscriptionEngine:
                     continue
                 
                 speaker_name, audio_chunk, ts, sa_id, is_final = item
+                audio_logger.info(f"Worker: Processing chunk from {speaker_name} (final={is_final})")
+                print(f"Worker: Processing chunk from {speaker_name}")
                 
                 # Perform actual transcription
                 segments, info = transcriber.transcribe(

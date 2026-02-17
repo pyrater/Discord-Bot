@@ -5,6 +5,29 @@ VENV_PATH="/app/applications/tars/venv"
 
 echo "🔍 Checking environment..."
 
+# 1.5 System Dependencies (Merged from start.sh/run.sh)
+if command -v apt-get &> /dev/null; then
+    echo "🔧 Checking System Dependencies..."
+    
+    # Check for libopus (Required for Voice)
+    if ! ldconfig -p | grep -q libopus; then
+        echo "🔊 libopus not found. Installing..."
+        apt-get update && apt-get install -y libopus0
+    fi
+    
+    # Check for build tools (Required for chroma/llama.cpp)
+    if ! command -v gcc &> /dev/null || ! command -v cmake &> /dev/null; then
+         echo "🛠️ Build tools not found. Installing build-essential gcc cmake..."
+         apt-get update && apt-get install -y build-essential gcc cmake
+    fi
+    
+    # Check for FFMPEG (System level is preferred)
+    if ! command -v ffmpeg &> /dev/null; then
+         echo "🎬 ffmpeg not found. Installing..."
+         apt-get install -y ffmpeg
+    fi
+fi
+
 # 2. Create venv if it doesn't exist
 if [ ! -d "$VENV_PATH" ]; then
     echo "🛠️ Creating new virtual environment in $VENV_PATH..."

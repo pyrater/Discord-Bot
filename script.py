@@ -60,7 +60,7 @@ logging.basicConfig(
     ]
 )
 
-# FFMPEG path is now handled in conversation_manager.py
+
 
 # Ensure telemetry is disabled BEFORE chromadb initialization
 os.environ['CHROMA_TELEMETRY'] = 'False' 
@@ -260,11 +260,16 @@ async def process_voice_queue():
                     break
             
             if found_channel_id:
-                # recent_context = conversation_manager.get_recent_history(found_channel_id, limit=3)
+                # Get context to help the brain decide
+                recent_context = conversation_manager.get_recent_history(found_channel_id, limit=3)
                 
-                # if not should_reply:
-                #     should_reply = await brain.should_respond(text, False, recent_context)
-                pass
+                # If not a wake word, ask the Brain's Gatekeeper
+                if not should_reply:
+                    should_reply = await brain.should_respond(text, False, recent_context)
+                    if should_reply:
+                        logging.info(f"🧠 Gatekeeper Check: PASSED for '{text}'")
+                    else:
+                        logging.info(f"🧠 Gatekeeper Check: IGNORED '{text}'")
 
             if should_reply and target_guild and target_channel and target_member:
                 logging.info(f"🤖 Voice Triggered ({'Wake Word' if is_wake else 'Smart Context'}) by {speaker_name}: {text}")

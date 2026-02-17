@@ -100,7 +100,8 @@ class DiscordAudioSink(voice_recv.AudioSink):
             # So we pass it the chunk.
             
             current_time = time.time()
-            # logging.info(f"Packet from {username} ({len(audio_16k)} samples)")
+            if len(audio_16k) > 0:
+                logging.info(f"Packet from {username} ({len(audio_16k)} samples)")
             agent.handle_speech(
                 audio_chunk=audio_16k,
                 end_time=current_time,
