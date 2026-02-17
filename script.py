@@ -233,7 +233,7 @@ async def process_voice_queue():
             # --- TRIGGER LOGIC ---
             # 1. Wake Words (Fast Path - Guaranteed)
             # UPDATED: Wake words for TARS
-            wake_words = ["tars", "robot", "case", "computer", "tarce", "tarz", "hey tars", "ok tars", "taras", "listen", "can you", "yo tars"]
+            wake_words = ["tars", "robot", "case", "computer", "tarce", "tarst", "tar", "tarz", "hey tars", "ok tars", "taras", "listen", "can you", "yo tars"]
             is_wake = any(w in text.lower() for w in wake_words)
             
             # 2. Contextual Smarts (Slow Path - LLM Gatekeeper)
