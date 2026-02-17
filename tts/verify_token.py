@@ -1,4 +1,7 @@
 import os
+from dotenv import load_dotenv
+
+load_dotenv()
 import requests
 
 def verify_hf_token(token):
@@ -38,4 +41,7 @@ def verify_hf_token(token):
 
 if __name__ == "__main__":
     token = os.getenv("HF_TOKEN")
-    verify_hf_token(token)
+    if not token:
+        print("ERROR: HF_TOKEN is not set in environment.")
+    else:
+        verify_hf_token(token)
