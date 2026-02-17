@@ -185,36 +185,48 @@ st.sidebar.subheader("⚙️ Bot Control")
 
 
 if st.sidebar.button("🟢 Restart Bot", type="secondary"):
-    # 1. Kill existing
-    killed = False
-    for proc in psutil.process_iter(['pid', 'name', 'cmdline']):
-        try:
-            cmd = proc.info['cmdline'] or []
-            if 'python' in proc.info['name'].lower() and any("script.py" in arg for arg in cmd):
-                proc.kill()
-                killed = True
-        except (psutil.NoSuchProcess, psutil.AccessDenied, psutil.ZombieProcess):
-            pass
-    
-    # 2. Start new
     try:
-        if os.name == 'nt':
-            # Open in new visible window
-            subprocess.Popen(["start", "cmd", "/k", "python script.py"], shell=True)
-        else:
-            subprocess.Popen(["nohup", "python", "script.py", "&"], shell=True)
-        st.toast("Bot Restarted! 🚀")
+        # 1. Remove the stop flag if it exists (so the loop restarts it)
+        flag_path = "/app/stop_bot.flag"
+        if os.path.exists(flag_path):
+            os.remove(flag_path)
+            
+        # 2. Kill existing process to trigger the loop in boot.sh
+        killed = False
+        for proc in psutil.process_iter(['pid', 'name', 'cmdline']):
+            try:
+                cmd = proc.info['cmdline'] or []
+                # Match the exact command used in boot.sh
+                if 'python' in proc.info['name'].lower() and any("script.py" in arg for arg in cmd):
+                    proc.kill()
+                    killed = True
+            except (psutil.NoSuchProcess, psutil.AccessDenied, psutil.ZombieProcess):
+                pass
+        
+        st.toast("Bot Restart Signal Sent! 🚀")
+        st.info("Supervisor should restart the bot momentarily.")
+        
     except Exception as e:
-        st.sidebar.error(f"Failed to start: {e}")
+        st.sidebar.error(f"Failed to restart: {e}")
 
 if st.sidebar.button("🔴 Stop Bot", type="primary"):
-    for proc in psutil.process_iter(['pid', 'name', 'cmdline']):
-        try:
-            cmd = proc.info['cmdline'] or []
-            if 'python' in proc.info['name'].lower() and any("script.py" in arg for arg in cmd):
-                proc.kill()
-        except: pass
-    st.sidebar.error("Bot Process Terminated")
+    try:
+        # 1. Create the stop flag (so the loop pauses)
+        with open("/app/stop_bot.flag", "w") as f:
+            f.write("STOP")
+            
+        # 2. Kill the process
+        for proc in psutil.process_iter(['pid', 'name', 'cmdline']):
+            try:
+                cmd = proc.info['cmdline'] or []
+                if 'python' in proc.info['name'].lower() and any("script.py" in arg for arg in cmd):
+                    proc.kill()
+            except: pass
+            
+        st.sidebar.error("Bot Process Terminated & Paused.")
+        
+    except Exception as e:
+        st.sidebar.error(f"Failed to stop: {e}")
 
 st.sidebar.divider()
 st.sidebar.subheader("� Backup System")

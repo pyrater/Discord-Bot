@@ -40,7 +40,23 @@ streamlit run /app/applications/tars/dashboard.py \
     --server.headless=true \
     --server.fileWatcherType none &
 
-# 6. Start the Bot (Foreground)
-echo "🤖 Launching TARS..."
-# -u keeps logs unbuffered so they show up in the log file immediately
-python -u /app/applications/tars/script.py > /app/applications/tars/bot.log 2>&1
+# 6. Start the Bot (Supervisor Loop)
+echo "🤖 Launching TARS Supervisor..."
+while true; do
+    if [ -f "/app/stop_bot.flag" ]; then
+        echo "🛑 'stop_bot.flag' detected. Bot is paused."
+        sleep 5
+    else
+        echo "🚀 Starting Bot Process..."
+        # -u keeps logs unbuffered so they show up in the log file immediately
+        python -u /app/applications/tars/script.py >> /app/applications/tars/bot.log 2>&1
+        
+        EXIT_CODE=$?
+        echo "⚠️ Bot process exited with code $EXIT_CODE."
+        
+        # If exit code was 0 (clean exit), maybe we want to stop? 
+        # For now, we assume we always want to restart unless the flag is present.
+        echo "🔄 Restarting in 2 seconds..."
+        sleep 2
+    fi
+done
