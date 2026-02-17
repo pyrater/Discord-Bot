@@ -1,0 +1,10 @@
+diart
+faster-whisper
+sounddevice
+numpy
+scipy
+pyannote.audio
+torch
+torchaudio
+flask
+flask-cors

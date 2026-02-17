@@ -8,6 +8,11 @@ __pycache__/
 
 # Distribution / packaging
 .Python
+.env
+*.db
+*.db-*
+*.sqlite3
+chroma_db/*
 build/
 develop-eggs/
 dist/
