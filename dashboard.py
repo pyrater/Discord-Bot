@@ -26,61 +26,83 @@ from openai import AsyncOpenAI
 # --- STYLING: NEXUS CORE AESTHETIC ---
 GLOBAL_CSS = """
 <style>
-@import url('https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600&family=JetBrains+Mono:wght@400;700&family=Rajdhani:wght@500;600;700&display=swap');
+/* TARS DASHBOARD THEME V2 - PREMIUM CINEMATIC */
+@import url('https://fonts.googleapis.com/css2?family=Orbitron:wght@400;500;700;900&family=Space+Grotesk:wght@300;400;500;700&family=JetBrains+Mono:wght@400;700&display=swap');
 
 :root {
-    --glass-bg: rgba(13, 17, 23, 0.7);
-    --glass-border: rgba(56, 139, 253, 0.15);
-    --accent-blue: #2f81f7;
-    --text-primary: #c9d1d9;
-    --text-secondary: #8b949e;
-    --bg-dark: #010409;
+    --bg-deep: #020202;
+    --bg-panel: #0a0a0a;
+    --text-primary: #e0e0e0;
+    --text-secondary: #a0a0a0;
+    --tars-amber: #ffca28;
+    --tars-amber-glow: rgba(255, 202, 40, 0.4);
+    --tars-cyan: #00f0ff;
+    --tars-cyan-glow: rgba(0, 240, 255, 0.4);
+    --glass-bg: rgba(15, 15, 15, 0.6);
+    --glass-border: 1px solid rgba(255, 255, 255, 0.08);
+    --card-shadow: 0 4px 30px rgba(0, 0, 0, 0.5);
     
-    /* Compatibility vars */
-    --neon-blue: #2f81f7; 
-    --neon-purple: #a371f7;
-    --neon-red: #f85149;
+    /* Compatibility vars for existing code */
+    --accent-blue: #00f0ff; 
+    --neon-blue: #00f0ff;
+    --neon-purple: #9d46ff;
+    --neon-red: #ff4444;
 }
 
-html, body, [class*="st-"] {
-    font-family: 'Inter', sans-serif !important;
-    background-color: var(--bg-dark) !important;
+/* GLOBAL RESET & BACKGROUND */
+.stApp {
+    background-color: var(--bg-deep);
+    background-image:
+        radial-gradient(circle at 15% 50%, rgba(20, 20, 20, 1) 0%, transparent 25%),
+        radial-gradient(circle at 85% 30%, rgba(10, 10, 30, 0.4) 0%, transparent 25%);
+    font-family: 'Space Grotesk', sans-serif !important;
     color: var(--text-primary) !important;
-    background-image: radial-gradient(circle at 50% 0%, rgba(56, 139, 253, 0.1) 0%, transparent 60%) !important;
-    background-size: 100% 100% !important;
-    background-position: center top !important;
 }
 
-h1, h2, h3, .hud-title {
-    font-weight: 600 !important;
-    letter-spacing: 0.5px !important;
-    font-family: 'Rajdhani', sans-serif !important;
+/* TYPOGRAPHY */
+h1, h2, h3, .hud-title, .stsubheader, .stTitle {
+    font-family: 'Orbitron', sans-serif !important;
     text-transform: uppercase;
+    letter-spacing: 2px !important;
+    color: var(--text-primary) !important;
+    text-shadow: 0 0 10px rgba(0,0,0,0.5);
+    border: none !important;
 }
 
-.mono, code, pre, .hud-value, .stMetricValue {
+.mono, code, pre, .hud-value, .stMetricValue, .stDataFrame {
     font-family: 'JetBrains Mono', monospace !important;
 }
 
-/* Hide Sidebar & Streamlit Chrome */
+/* HIDE STREAMLIT CHROME */
 [data-testid="stSidebar"] { display: none !important; }
 #MainMenu, footer, header { visibility: hidden !important; }
 
-/* Remove Top Padding/Dead Space */
+/* LAYOUT CLEANUP */
 .block-container {
-    padding-top: 0rem !important;
+    padding-top: 1rem !important;
     padding-bottom: 5rem !important;
-    margin-top: 1rem !important;
+    max-width: 95rem !important;
 }
 
-/* HUD Header - Minimalist */
+/* --- NEXUS HUD (CUSTOM ADAPTATION) --- */
 .nexus-hud {
     display: flex; justify-content: space-between; align-items: center;
-    background: var(--glass-bg);
-    border-bottom: 1px solid var(--glass-border);
-    padding: 12px 24px; 
-    margin-bottom: 30px;
-    backdrop-filter: blur(12px);
+    background: rgba(10, 10, 10, 0.7);
+    border-bottom: 1px solid var(--tars-cyan);
+    box-shadow: 0 5px 20px rgba(0, 240, 255, 0.1);
+    padding: 15px 30px; 
+    margin-bottom: 35px;
+    backdrop-filter: blur(20px);
+    border-radius: 0 0 16px 16px;
+    position: relative;
+    overflow: hidden;
+}
+
+/* HUD GLOW LINE */
+.nexus-hud::after {
+    content: ''; position: absolute; bottom: 0; left: 0; width: 100%; height: 2px;
+    background: linear-gradient(90deg, transparent, var(--tars-cyan), transparent);
+    box-shadow: 0 0 15px var(--tars-cyan);
 }
 
 .hud-group {
@@ -90,97 +112,153 @@ h1, h2, h3, .hud-title {
 .hud-item {
     text-align: left;
     display: flex; flex-direction: column;
+    border-left: 2px solid rgba(255,255,255,0.05);
+    padding-left: 15px;
 }
 
 .hud-label {
-    font-size: 10px; color: var(--text-secondary); text-transform: uppercase; letter-spacing: 1px; margin-bottom: 2px;
-    font-family: 'Inter', sans-serif; font-weight: 500;
+    font-size: 11px; color: var(--text-secondary); text-transform: uppercase; letter-spacing: 1.5px; margin-bottom: 4px;
+    font-family: 'Orbitron', sans-serif; font-weight: 500;
 }
 
 .hud-value {
-    font-size: 16px; font-weight: 500; color: var(--text-primary);
+    font-size: 18px; font-weight: 600; color: var(--text-primary);
+    text-shadow: 0 0 5px rgba(255,255,255,0.2);
 }
 
 .hud-title {
-    font-size: 18px; color: var(--text-primary);
-    font-weight: 700 !important;
-    letter-spacing: 1px;
+    font-size: 24px; color: var(--text-primary);
+    font-weight: 800 !important;
+    letter-spacing: 3px !important;
+    background: linear-gradient(90deg, #fff, var(--text-secondary));
+    -webkit-background-clip: text;
+    -webkit-text-fill-color: transparent;
 }
 
-/* Clean Glass Cards */
-.tech-card, .stCard, div[data-testid="stMetric"], div[data-testid="stExpander"] {
-    background: rgba(22, 27, 34, 0.5) !important;
-    border: 1px solid var(--glass-border) !important;
-    border-radius: 6px !important;
+/* --- CARDS & PANELS --- */
+.tech-card, div[data-testid="stMetric"], div[data-testid="stExpander"] {
+    background: var(--glass-bg) !important;
+    border: var(--glass-border) !important;
+    border-radius: 12px !important;
     padding: 20px !important;
-    box-shadow: none !important;
-    backdrop-filter: blur(10px);
-    margin-bottom: 16px;
+    box-shadow: var(--card-shadow) !important;
+    backdrop-filter: blur(25px);
+    margin-bottom: 20px;
+    transition: transform 0.3s ease, box-shadow 0.3s ease, border-color 0.3s ease;
 }
-/* No pseudo-elements */
-.tech-card::before, .tech-card::after { display: none !important; }
 
-/* Buttons - Clean Actions */
+.tech-card:hover, div[data-testid="stMetric"]:hover {
+    transform: translateY(-3px);
+    box-shadow: 0 10px 40px rgba(0,0,0,0.6), 0 0 15px var(--tars-cyan-glow) !important;
+    border-color: var(--tars-cyan) !important;
+}
+
+/* METRICS SPECIFIC */
+[data-testid="stMetricValue"] {
+    font-family: 'Orbitron', sans-serif !important;
+    color: var(--tars-cyan) !important;
+    font-size: 32px !important;
+    font-weight: 700 !important;
+    text-shadow: 0 0 15px var(--tars-cyan-glow);
+}
+[data-testid="stMetricLabel"] {
+    font-family: 'Space Grotesk', sans-serif !important;
+    font-weight: 700;
+    text-transform: uppercase;
+    letter-spacing: 1px;
+    color: var(--text-secondary) !important;
+}
+
+/* --- BUTTONS (PREMIUM) --- */
 div.stButton > button {
-    background: rgba(56, 139, 253, 0.1) !important;
-    border: 1px solid rgba(56, 139, 253, 0.3) !important;
-    color: var(--accent-blue) !important;
-    border-radius: 6px !important;
-    padding: 6px 16px !important;
+    background: linear-gradient(135deg, rgba(255,255,255,0.05) 0%, rgba(255,255,255,0.01) 100%) !important;
+    border: 1px solid rgba(255,255,255,0.1) !important;
+    color: var(--text-primary) !important;
+    font-family: 'Orbitron', sans-serif !important;
+    letter-spacing: 1.5px !important;
+    text-transform: uppercase !important;
+    padding: 12px 28px !important;
+    border-radius: 4px !important;
+    transition: all 0.3s cubic-bezier(0.4, 0, 0.2, 1);
+    position: relative;
+    overflow: hidden;
     font-weight: 600 !important;
-    font-family: 'Inter', sans-serif !important;
-    font-size: 14px !important;
-    text-transform: none !important;
-    transition: all 0.1s ease;
-}
-div.stButton > button:hover {
-    background: rgba(56, 139, 253, 0.2) !important;
-    border-color: var(--accent-blue) !important;
-    color: #fff !important;
 }
 
-/* Danger Buttons */
+div.stButton > button::before {
+    content: ''; position: absolute; top: 0; left: -100%; width: 100%; height: 100%;
+    background: linear-gradient(90deg, transparent, rgba(255, 202, 40, 0.2), transparent);
+    transition: 0.5s;
+}
+
+div.stButton > button:hover::before { left: 100%; }
+
+div.stButton > button:hover {
+    border-color: var(--tars-amber) !important;
+    color: var(--tars-amber) !important;
+    box-shadow: 0 0 20px var(--tars-amber-glow);
+    transform: translateY(-2px);
+}
+
+/* DANGER BUTTONS */
 div[data-testid="stButton"] button:contains("DELETE"), 
 div[data-testid="stButton"] button:contains("SHUTDOWN") {
-    border-color: rgba(248, 81, 73, 0.4) !important; color: var(--neon-red) !important;
-    background: rgba(248, 81, 73, 0.1) !important;
+    border-color: rgba(255, 68, 68, 0.3) !important; color: var(--neon-red) !important;
 }
 div[data-testid="stButton"] button:contains("DELETE"):hover,
 div[data-testid="stButton"] button:contains("SHUTDOWN"):hover {
-    background: rgba(248, 81, 73, 0.2) !important;
     border-color: var(--neon-red) !important;
+    box-shadow: 0 0 20px rgba(255, 68, 68, 0.4);
 }
 
-/* Form Elements */
+/* --- INPUTS --- */
 .stTextInput input, .stSelectbox div[data-baseweb="select"], .stTextArea textarea {
-    background-color: #0d1117 !important;
-    border: 1px solid #30363d !important;
-    color: var(--text-primary) !important;
-    border-radius: 6px !important;
-    font-family: 'Inter', sans-serif !important;
+    background-color: rgba(0, 0, 0, 0.4) !important;
+    border: 1px solid rgba(255, 255, 255, 0.1) !important;
+    color: var(--tars-cyan) !important;
+    border-radius: 4px !important;
+    font-family: 'JetBrains Mono', monospace !important;
+    transition: all 0.3s ease;
 }
 .stTextInput input:focus, .stTextArea textarea:focus {
-    border-color: var(--accent-blue) !important;
-    box-shadow: 0 0 0 1px var(--accent-blue) !important;
+    border-color: var(--tars-cyan) !important;
+    box-shadow: 0 0 15px var(--tars-cyan-glow) !important;
+    background-color: rgba(0, 240, 255, 0.05) !important;
 }
 
-/* Tabs */
-.stTabs [data-baseweb="tab-list"] { gap: 20px; margin-bottom: 20px; border-bottom: 1px solid #30363d; padding-bottom: 0px; }
+/* --- TABS --- */
+.stTabs [data-baseweb="tab-list"] { gap: 20px; margin-bottom: 25px; border-bottom: 1px solid var(--glass-border); padding-bottom: 0px; }
 .stTabs [data-baseweb="tab"] {
     background: transparent;
     border: none;
     color: var(--text-secondary);
-    font-family: 'Inter', sans-serif;
+    font-family: 'Space Grotesk', sans-serif;
     font-weight: 500;
-    font-size: 14px;
-    padding: 12px 0;
-    margin-right: 15px;
+    font-size: 15px;
+    padding: 12px 15px;
+    transition: all 0.3s;
 }
 .stTabs [aria-selected="true"] {
-    color: var(--text-primary) !important;
-    border-bottom: 2px solid var(--accent-blue) !important;
-    font-weight: 600 !important;
+    color: var(--tars-amber) !important;
+    border-bottom: 2px solid var(--tars-amber) !important;
+    font-weight: 700 !important;
+    text-shadow: 0 0 10px var(--tars-amber-glow);
 }
+
+/* --- ANIMATIONS --- */
+@keyframes fadeIn {
+    from { opacity: 0; transform: translateY(10px); }
+    to { opacity: 1; transform: translateY(0); }
+}
+.element-container, .stMarkdown, .stMetric {
+    animation: fadeIn 0.6s cubic-bezier(0.2, 0.8, 0.2, 1) forwards;
+}
+
+/* --- SCROLLBAR --- */
+::-webkit-scrollbar { width: 8px; height: 8px; }
+::-webkit-scrollbar-track { background: #050505; }
+::-webkit-scrollbar-thumb { background: #333; border-radius: 4px; }
+::-webkit-scrollbar-thumb:hover { background: var(--tars-cyan); }
 
 </style>
 """
@@ -199,29 +277,29 @@ def nexus_header():
         neural_stress = 0.0
         last_mood = "UNKNOWN"
 
-    stress_color = "#ff003c" if neural_stress > 0.6 else ("#f39c12" if neural_stress > 0.3 else "#00f3ff")
+    stress_color = "#ff4444" if neural_stress > 0.6 else ("#ffca28" if neural_stress > 0.3 else "#00f0ff")
     
     st.markdown(f"""
         <div class="nexus-hud">
             <div class="hud-group">
-                <div class="hud-title">TARS <span style="font-size:12px; opacity:0.7; letter-spacing:1px; vertical-align:middle;">NEXUS CORE</span></div>
+                <div class="hud-title">TARS <span style="font-size:12px; opacity:0.8; letter-spacing:4px; vertical-align:middle; text-shadow:0 0 10px var(--tars-cyan);">// NEXUS</span></div>
             </div>
             <div class="hud-group">
                 <div class="hud-item">
                     <div class="hud-label">CPU LOAD</div>
-                    <div class="hud-value">{cpu}%</div>
+                    <div class="hud-value" style="color: var(--tars-cyan);">{cpu}%</div>
                 </div>
                 <div class="hud-item">
                     <div class="hud-label">RAM USAGE</div>
-                    <div class="hud-value">{ram}%</div>
+                    <div class="hud-value" style="color: var(--tars-cyan);">{ram}%</div>
                 </div>
                 <div class="hud-item">
                     <div class="hud-label">NEURAL STRESS</div>
-                    <div class="hud-value" style="color: {stress_color};">{int(neural_stress*100)}%</div>
+                    <div class="hud-value" style="color: {stress_color}; text-shadow: 0 0 10px {stress_color}66;">{int(neural_stress*100)}%</div>
                 </div>
                 <div class="hud-item">
                     <div class="hud-label">COGNITIVE STATE</div>
-                    <div class="hud-value" style="color: var(--neon-purple);">{last_mood.upper()}</div>
+                    <div class="hud-value" style="color: var(--tars-amber); text-shadow: 0 0 10px var(--tars-amber-glow);">{last_mood.upper()}</div>
                 </div>
             </div>
         </div>
