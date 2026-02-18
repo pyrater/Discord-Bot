@@ -107,7 +107,7 @@ from conversation_manager import ConversationManager
 intents = discord.Intents.default()
 intents.message_content = True 
 intents.members = True # Needed for user lookup in voice channels
-bot = commands.Bot(command_prefix="!", intents=intents)
+bot = commands.Bot(command_prefix="!", intents=intents, help_command=None)
 
 # B. SETUP AI CLIENT
 ai_client = AsyncOpenAI(base_url=settings.LLM_BASE_URL, api_key=settings.LLM_TOKEN)
@@ -183,14 +183,16 @@ async def on_ready():
     bot.memory_engine = memory_engine
     bot.brain = brain
     bot.voice_bridge = voice_bridge
+
     bot.ai_client = ai_client
+    bot.conversation_manager = conversation_manager
     
     # Start Memory Engine Background Tasks
     await memory_engine.start()
     
     # Load Cogs
     # Only loading Voice as requested (Admin, Dream, Memory disabled)
-    initial_extensions = ["cogs.voice"]
+    initial_extensions = ["cogs.voice", "cogs.admin", "cogs.reminders", "cogs.tools_cog"]
     for extension in initial_extensions:
         try:
             await bot.load_extension(extension)

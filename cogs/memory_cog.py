@@ -6,7 +6,7 @@ class MemoryInspector(commands.Cog):
     def __init__(self, bot):
         self.bot = bot
 
-    @commands.hybrid_command(name="recall", description="Search Noodlebrain's memory about you.")
+    @commands.hybrid_command(name="recall", description="Search Tars's memory about you.")
     async def recall(self, ctx, *, query: str = None):
         """
         Retrieves facts and memories.
@@ -88,6 +88,22 @@ class MemoryInspector(commands.Cog):
             embed.add_field(name="🗂️ Memory Stream", value="error retrieving memories", inline=False)
 
         await ctx.send(embed=embed)
+
+    @commands.hybrid_command(name="forget", description="Wipe all memories Tars has about YOU.")
+    async def forget(self, ctx):
+        """Standard User Command: Wipes your own memory."""
+        user = ctx.author
+        
+        # Confirmation Dialog (Optional, but good UX. For now, direct action)
+        if not hasattr(self.bot, 'memory_engine'):
+            await ctx.send("🧠 Memory Engine offline.")
+            return
+
+        success = await self.bot.memory_engine.wipe_user(user.id)
+        if success:
+            await ctx.send(f"🧹 **Memory Wiped.** I have forgotten everything about you, {user.display_name}.")
+        else:
+            await ctx.send("❌ Error wiping memory.")
 
 async def setup(bot):
     await bot.add_cog(MemoryInspector(bot))

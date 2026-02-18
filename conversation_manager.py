@@ -110,11 +110,16 @@ class ConversationManager:
 
             # 3. Reminder Callback
             async def schedule_reminder(minutes: float, note: str) -> None:
-                async def _wait_and_send() -> None:
-                    await asyncio.sleep(minutes * 60)
-                    if channel and hasattr(channel, 'send'):
-                         await channel.send(f"⏰ **REMINDER:** {user.mention} - {note}")
-                asyncio.create_task(_wait_and_send())
+                cog = self.bot.get_cog("Reminders")
+                if cog:
+                    await cog.create_reminder(user_id, channel_id, minutes, note)
+                else:
+                    # Fallback to ephemeral if cog fails to load
+                    async def _wait_and_send() -> None:
+                        await asyncio.sleep(minutes * 60)
+                        if channel and hasattr(channel, 'send'):
+                             await channel.send(f"⏰ **REMINDER:** {user.mention} - {note}")
+                    asyncio.create_task(_wait_and_send())
 
             # 4. STREAMING BRAIN CALL
             # Initialize AudioQueue if needed
@@ -191,7 +196,7 @@ class ConversationManager:
             # 6. Update History
             if full_response_text:
                  short_term.append(f"{username}: {user_text}")
-                 short_term.append(f"Noodlebrain: {full_response_text}")
+                 short_term.append(f"Tars: {full_response_text}")
                  if len(short_term) > 20: 
                      self.conversation_history[channel_id] = short_term[-20:]
                      
@@ -227,9 +232,10 @@ class ConversationManager:
              loop = asyncio.get_event_loop()
              await loop.run_in_executor(
                  None, 
-                 lambda: self.memory_engine.store_observation(user_id, user_text, guild_id, channel_id)
+                 lambda: self.memory_engine.store_observation(user_id, user.display_name, user_text, guild_id, channel_id)
              )
-             # logging.info(f"💾 Observation logged for {user.display_name}") # Optional: Uncomment for debug
+             guild_name = guild.name if guild else "DM"
+             logging.info(f"💾 [{guild_name}] {user.display_name}: {user_text}")
              
         except Exception as e:
             logging.error(f"Passive Listen Error: {e}")
@@ -271,6 +277,7 @@ class ConversationManager:
                 try:
                     self.memory_engine.store_memory(
                         user_id=str(user_id),
+                        username=username,
                         prompt=prompt,
                         response=response,
                         guild_id=guild_id,

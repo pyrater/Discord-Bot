@@ -53,7 +53,7 @@ Respond in JSON format:
                         {"role": "user", "content": consolidation_prompt}
                     ],
                     temperature=0.7,
-                    max_tokens=2000,
+                    max_tokens=settings.MAX_GENERATION,
                     timeout=20
                 )
                 

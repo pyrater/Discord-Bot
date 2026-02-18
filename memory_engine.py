@@ -8,6 +8,7 @@ import asyncio
 from datetime import datetime
 from collections import deque
 from functools import lru_cache as from_functools_import_lru_cache
+import contextlib
 
 class MemoryEngine:
     def __init__(self, db_path=None, chroma_path=None):
@@ -26,6 +27,18 @@ class MemoryEngine:
         self.knowledge_collection = self.chroma_client.get_or_create_collection(name="tars_knowledge")
         self.summary_collection = self.chroma_client.get_or_create_collection(name="conversation_summaries")
         
+    @contextlib.contextmanager
+    def _get_connection(self, use_row_factory=False):
+        """Context manager for robust SQLite connections."""
+        conn = sqlite3.connect(self.db_path, timeout=30)
+        if use_row_factory:
+            conn.row_factory = sqlite3.Row
+        try:
+            yield conn
+        finally:
+            conn.close()
+
+        
     def warmup(self):
         """Forces the embedding model to load into memory."""
         try:
@@ -38,11 +51,9 @@ class MemoryEngine:
 
     async def get_noodle_vibe(self, user_id):
         def _fetch():
-            conn = sqlite3.connect(self.db_path, timeout=30)
-            conn.row_factory = sqlite3.Row
-            row = conn.execute("SELECT * FROM emotional_state WHERE user_id = ?", (str(user_id),)).fetchone()
-            conn.close()
-            return row
+            with self._get_connection(use_row_factory=True) as conn:
+                row = conn.execute("SELECT * FROM emotional_state WHERE user_id = ?", (str(user_id),)).fetchone()
+                return row
 
         loop = asyncio.get_event_loop()
         row = await loop.run_in_executor(None, _fetch)
@@ -59,12 +70,11 @@ class MemoryEngine:
         uid = str(user_id)
         
         def _wipe_sql():
-            conn = sqlite3.connect(self.db_path, timeout=30)
-            conn.execute("DELETE FROM emotional_state WHERE user_id = ?", (uid,))
-            conn.execute("DELETE FROM audit_logs WHERE user_id = ?", (uid,))
-            conn.execute("DELETE FROM facts WHERE user_id = ?", (uid,))
-            conn.commit()
-            conn.close()
+            with self._get_connection() as conn:
+                conn.execute("DELETE FROM emotional_state WHERE user_id = ?", (uid,))
+                conn.execute("DELETE FROM audit_logs WHERE user_id = ?", (uid,))
+                conn.execute("DELETE FROM facts WHERE user_id = ?", (uid,))
+                conn.commit()
 
         try:
             # 1. SQLite Deletions
@@ -79,28 +89,60 @@ class MemoryEngine:
             logging.error(f"❌ Wipe failed for {uid}: {e}")
             return False
 
+    async def wipe_all(self):
+        """Administrator-only: Wipes ENTIRE database and vector store."""
+        try:
+            # 1. SQLite Wipe
+            def _wipe_sql_global():
+                with self._get_connection() as conn:
+                    conn.execute("DELETE FROM emotional_state")
+                    conn.execute("DELETE FROM audit_logs")
+                    conn.execute("DELETE FROM facts")
+                    conn.execute("DELETE FROM reminders")
+                    conn.commit()
+            
+            loop = asyncio.get_event_loop()
+            await loop.run_in_executor(None, _wipe_sql_global)
+            
+            # 2. Chroma Wipe
+            # Deleting and recreating is cleaner than deleting items
+            for col_name in ["user_memories", "tars_knowledge", "conversation_summaries"]:
+                try:
+                    self.chroma_client.delete_collection(col_name)
+                except Exception as e:
+                    logging.warning(f"Note: Could not delete collection {col_name} (already gone?): {e}")
+            
+            # Recreate
+            self.collection = self.chroma_client.get_or_create_collection(name="user_memories")
+            self.knowledge_collection = self.chroma_client.get_or_create_collection(name="tars_knowledge")
+            self.summary_collection = self.chroma_client.get_or_create_collection(name="conversation_summaries")
+            
+            logging.warning("⚠️ CRITICAL: MEMORY ENGINE GLOBALLY WIPED")
+            return True
+        except Exception as e:
+            logging.error(f"❌ Global Wipe failed: {e}")
+            return False
+
     async def log_interaction(self, user_id, prompt, response, mood, full_prompt, memories, emo_results):
         """Logs the interaction and updates emotional state in SQLite (Threaded)."""
         def _write():
             try:
-                conn = sqlite3.connect(self.db_path, timeout=30)
-                
-                # 1. Update Emotional State
-                conn.execute("INSERT OR IGNORE INTO emotional_state (user_id) VALUES (?)", (str(user_id),))
-                for res in emo_results:
-                    label, score = res['label'], res['score']
-                    conn.execute(f"UPDATE emotional_state SET {label} = ({label} * 0.7) + ? WHERE user_id = ?", (score * 0.3, str(user_id)))
-                
-                # 2. Append to Audit Log
-                memories_json = json.dumps(memories) if isinstance(memories, list) else str(memories)
-                conn.execute("""INSERT INTO audit_logs 
-                             (timestamp, user_id, prompt, response, mood, full_prompt, memories_retrieved) 
-                             VALUES (?, ?, ?, ?, ?, ?, ?)""",
-                             (datetime.now().isoformat(), str(user_id), prompt, response, mood, 
-                              full_prompt, memories_json))
-                
-                conn.commit()
-                conn.close()
+                with self._get_connection() as conn:
+                    # 1. Update Emotional State
+                    conn.execute("INSERT OR IGNORE INTO emotional_state (user_id) VALUES (?)", (str(user_id),))
+                    for res in emo_results:
+                        label, score = res['label'], res['score']
+                        conn.execute(f"UPDATE emotional_state SET {label} = ({label} * 0.7) + ? WHERE user_id = ?", (score * 0.3, str(user_id)))
+                    
+                    # 2. Append to Audit Log
+                    memories_json = json.dumps(memories) if isinstance(memories, list) else str(memories)
+                    conn.execute("""INSERT INTO audit_logs 
+                                 (timestamp, user_id, prompt, response, mood, full_prompt, memories_retrieved) 
+                                 VALUES (?, ?, ?, ?, ?, ?, ?)""",
+                                 (datetime.now().isoformat(), str(user_id), prompt, response, mood, 
+                                  full_prompt, memories_json))
+                    
+                    conn.commit()
                 return True
             except Exception as e:
                 logging.error(f"❌ SQLite Log Error for {user_id}: {e}")
@@ -117,46 +159,63 @@ class MemoryEngine:
         """Starts background workers."""
         asyncio.create_task(self._process_fact_queue())
 
+    def persist(self):
+        """Forces a persistent client to flush to disk (ChromaDB specific logic)."""
+        # PersistentClient handles this automatically in newer versions, 
+        # but heartbeating or closing the client can trigger a sync in Docker.
+        try:
+            self.chroma_client.heartbeat()
+            logging.info("💾 Memory Engine: ChromaDB Persistence signaled.")
+        except Exception as e:
+            logging.warning(f"⚠️ Persistence signal failed: {e}")
+
     def _init_sqlite(self):
-        conn = sqlite3.connect(self.db_path, timeout=30)
-        conn.execute("PRAGMA journal_mode=WAL")
-        
-        # 1. Facts Table (Knowledge Graph)
-        conn.execute("""CREATE TABLE IF NOT EXISTS facts 
-                     (id INTEGER PRIMARY KEY AUTOINCREMENT, 
-                      user_id TEXT, 
-                      subject TEXT, 
-                      predicate TEXT, 
-                      object TEXT, 
-                      confidence REAL,
-                      timestamp TEXT)""")
-
-        # 2. Audit Logs (Chat History)
-        conn.execute("""CREATE TABLE IF NOT EXISTS audit_logs 
-                     (timestamp TEXT, user_id TEXT, prompt TEXT, response TEXT, mood TEXT, 
-                      full_prompt TEXT, memories_retrieved TEXT)""")
-        
-        # Migrations for Audit Logs
-        try:
-            conn.execute("ALTER TABLE audit_logs ADD COLUMN full_prompt TEXT")
-        except sqlite3.OperationalError: pass 
-        try:
-            conn.execute("ALTER TABLE audit_logs ADD COLUMN memories_retrieved TEXT")
-        except sqlite3.OperationalError: pass
-
-        # 3. Emotional State
-        EMOTION_LABELS = [
-            "admiration", "amusement", "anger", "annoyance", "approval", "caring", 
-            "confusion", "curiosity", "desire", "disappointment", "disapproval", 
-            "disgust", "embarrassment", "excitement", "fear", "gratitude", "grief", 
-            "joy", "love", "nervousness", "optimism", "pride", "realization", 
-            "relief", "remorse", "sadness", "surprise", "neutral"
-        ]
-        emo_cols = ", ".join([f"{emo} REAL DEFAULT 0.0" for emo in EMOTION_LABELS])
-        conn.execute(f"CREATE TABLE IF NOT EXISTS emotional_state (user_id TEXT PRIMARY KEY, {emo_cols})")
-        
-        conn.commit()
-        conn.close()
+        with self._get_connection() as conn:
+            conn.execute("PRAGMA journal_mode=WAL")
+            
+            # 1. Facts Table (Knowledge Graph)
+            conn.execute("""CREATE TABLE IF NOT EXISTS facts 
+                         (id INTEGER PRIMARY KEY AUTOINCREMENT, 
+                          user_id TEXT, 
+                          subject TEXT, 
+                          predicate TEXT, 
+                          object TEXT, 
+                          confidence REAL,
+                          timestamp TEXT)""")
+    
+            # 2. Audit Logs (Chat History)
+            conn.execute("""CREATE TABLE IF NOT EXISTS audit_logs 
+                         (timestamp TEXT, user_id TEXT, prompt TEXT, response TEXT, mood TEXT, 
+                          full_prompt TEXT, memories_retrieved TEXT)""")
+            
+            # 3. Reminders Table
+            conn.execute("""CREATE TABLE IF NOT EXISTS reminders 
+                         (id INTEGER PRIMARY KEY AUTOINCREMENT, 
+                          user_id TEXT, 
+                          channel_id TEXT, 
+                          due_time TEXT, 
+                          note TEXT)""")
+            
+            # Migrations for Audit Logs
+            try:
+                conn.execute("ALTER TABLE audit_logs ADD COLUMN full_prompt TEXT")
+            except sqlite3.OperationalError: pass 
+            try:
+                conn.execute("ALTER TABLE audit_logs ADD COLUMN memories_retrieved TEXT")
+            except sqlite3.OperationalError: pass
+    
+            # 3. Emotional State
+            EMOTION_LABELS = [
+                "admiration", "amusement", "anger", "annoyance", "approval", "caring", 
+                "confusion", "curiosity", "desire", "disappointment", "disapproval", 
+                "disgust", "embarrassment", "excitement", "fear", "gratitude", "grief", 
+                "joy", "love", "nervousness", "optimism", "pride", "realization", 
+                "relief", "remorse", "sadness", "surprise", "neutral"
+            ]
+            emo_cols = ", ".join([f"{emo} REAL DEFAULT 0.0" for emo in EMOTION_LABELS])
+            conn.execute(f"CREATE TABLE IF NOT EXISTS emotional_state (user_id TEXT PRIMARY KEY, {emo_cols})")
+            
+            conn.commit()
 
     @property
     def _encoding(self):
@@ -168,7 +227,6 @@ class MemoryEngine:
     @from_functools_import_lru_cache
     def count_tokens(self, text):
         return len(self._encoding.encode(text))
-
     async def _process_fact_queue(self):
         """Worker loop to process fact extraction sequentially."""
         while True:
@@ -192,8 +250,9 @@ class MemoryEngine:
         """
         extraction_prompt = f"""
         Extract permanent facts about the user from this message. 
-        Format as a JSON list of objects with keys: "subject", "predicate", "object".
+        Format as a JSON list of objects with keys: "subject", "predicate", "object", "overwrite".
         Self-reference (I, my) should be normalized to "{username}".
+        "overwrite": boolean. Set to true ONLY if this fact explicitly corrects or updates a previous fact (e.g., "My name is actually...").
         If no facts, return empty list [].
         
         Message: "{user_text}"
@@ -213,12 +272,16 @@ class MemoryEngine:
             facts = json.loads(data)
             if facts:
                 def _save_facts():
-                    conn = sqlite3.connect(self.db_path, timeout=30)
-                    for f in facts:
-                        conn.execute("INSERT INTO facts (user_id, subject, predicate, object, confidence, timestamp) VALUES (?, ?, ?, ?, ?, ?)",
-                                     (str(user_id), f.get('subject'), f.get('predicate'), f.get('object'), 0.9, datetime.now().isoformat()))
-                    conn.commit()
-                    conn.close()
+                    with self._get_connection() as conn:
+                        for f in facts:
+                            if f.get('overwrite'):
+                                logging.info(f"✏️ Overwriting fact for {user_id}: {f.get('subject')} {f.get('predicate')}")
+                                conn.execute("DELETE FROM facts WHERE user_id = ? AND subject = ? AND predicate = ?", 
+                                             (str(user_id), f.get('subject'), f.get('predicate')))
+                            
+                            conn.execute("INSERT INTO facts (user_id, subject, predicate, object, confidence, timestamp) VALUES (?, ?, ?, ?, ?, ?)",
+                                         (str(user_id), f.get('subject'), f.get('predicate'), f.get('object'), 0.9, datetime.now().isoformat()))
+                        conn.commit()
 
                 loop = asyncio.get_event_loop()
                 await loop.run_in_executor(None, _save_facts)
@@ -230,12 +293,9 @@ class MemoryEngine:
     async def get_facts(self, user_id):
         """Retrieves knowledge graph facts for a user."""
         def _fetch_facts():
-            conn = sqlite3.connect(self.db_path, timeout=30)
-            conn.row_factory = sqlite3.Row
-            cursor = conn.execute("SELECT subject, predicate, object FROM facts WHERE user_id = ? ORDER BY timestamp DESC LIMIT 10", (str(user_id),))
-            rows = cursor.fetchall()
-            conn.close()
-            return rows
+            with self._get_connection(use_row_factory=True) as conn:
+                cursor = conn.execute("SELECT subject, predicate, object FROM facts WHERE user_id = ? ORDER BY timestamp DESC LIMIT 10", (str(user_id),))
+                return cursor.fetchall()
 
         loop = asyncio.get_event_loop()
         rows = await loop.run_in_executor(None, _fetch_facts)
@@ -268,26 +328,28 @@ class MemoryEngine:
         # Return top 3
         return [mem for score, mem in scored_memories[:3]]
 
-    def store_memory(self, user_id, prompt, response, guild_id="DM", channel_id="DM", emotion="neutral"):
+    def store_memory(self, user_id, username, prompt, response, guild_id="DM", channel_id="DM", emotion="neutral"):
         """Stores interaction in ChromaDB."""
         self.collection.add(
-            documents=[f"User said: {prompt} | Tars replied: {response}"],
+            documents=[f"{username} said: {prompt} | Tars replied: {response}"],
             ids=[str(datetime.now().timestamp())],
             metadatas=[{
                 "user_id": str(user_id),
+                "username": str(username),
                 "emotion": emotion,
                 "guild_id": str(guild_id),
                 "channel_id": str(channel_id)
             }]
         )
 
-    def store_observation(self, user_id, text, guild_id="DM", channel_id="DM"):
+    def store_observation(self, user_id, username, text, guild_id="DM", channel_id="DM"):
         """Stores a passive observation (user message without bot reply)."""
         self.collection.add(
-            documents=[f"User observed: {text}"],
+            documents=[f"{username} observed: {text}"],
             ids=[str(datetime.now().timestamp())],
             metadatas=[{
                 "user_id": str(user_id),
+                "username": str(username),
                 "type": "observation",
                 "guild_id": str(guild_id),
                 "channel_id": str(channel_id)
@@ -312,35 +374,52 @@ class MemoryEngine:
 
     def get_recent_interactions(self, limit=50, hours=24):
         """Fetches recent interaction logs for the Dream Cycle."""
-        conn = sqlite3.connect(self.db_path, timeout=30)
-        conn.row_factory = sqlite3.Row
-        try:
-            # Try audit_logs first (New Schema)
-            cursor = conn.execute(f"""
-                SELECT prompt, response, mood, timestamp 
-                FROM audit_logs 
-                WHERE timestamp >= datetime('now', '-{hours} hours')
-                ORDER BY timestamp DESC
-                LIMIT ?
-            """, (limit,))
-            rows = cursor.fetchall()
-        except sqlite3.OperationalError:
-            # Fallback to interactions (Old Schema)
+        with self._get_connection(use_row_factory=True) as conn:
             try:
+                # Try audit_logs first (New Schema)
                 cursor = conn.execute(f"""
                     SELECT prompt, response, mood, timestamp 
-                    FROM interactions 
+                    FROM audit_logs 
                     WHERE timestamp >= datetime('now', '-{hours} hours')
                     ORDER BY timestamp DESC
                     LIMIT ?
                 """, (limit,))
                 rows = cursor.fetchall()
             except sqlite3.OperationalError:
-                rows = [] # Neither table exists?
+                # Fallback to interactions (Old Schema)
+                try:
+                    cursor = conn.execute(f"""
+                        SELECT prompt, response, mood, timestamp 
+                        FROM interactions 
+                        WHERE timestamp >= datetime('now', '-{hours} hours')
+                        ORDER BY timestamp DESC
+                        LIMIT ?
+                    """, (limit,))
+                    rows = cursor.fetchall()
+                except sqlite3.OperationalError:
+                    rows = [] # Neither table exists?
         
-        conn.close()
         return rows
 
     async def get_recent_interactions_async(self, limit=50, hours=24):
          loop = asyncio.get_event_loop()
          return await loop.run_in_executor(None, lambda: self.get_recent_interactions(limit, hours))
+
+    def search_memories(self, query, guild_id, user_id=None, n_results=5):
+        """
+        Searches memories.
+        - If guild_id is "DM", RESTRICTS to user_id (Private).
+        - If guild_id is valid, SEARCHES ALL users (Cross-User Context).
+        """
+        where_filter = {"guild_id": str(guild_id)}
+        
+        # Enforce Privacy for DMs
+        if str(guild_id) == "DM" and user_id:
+            where_filter = {"$and": [{"guild_id": "DM"}, {"user_id": str(user_id)}]}
+            
+        results = self.collection.query(
+            query_texts=[query],
+            where=where_filter,
+            n_results=n_results
+        )
+        return results.get('documents', [[]])[0]

@@ -23,9 +23,16 @@ class Config:
         self.DB_PATH = os.path.join(base_dir, "tars_state.db")
         self.CHROMA_PATH = os.path.join(base_dir, "chroma_db")
         self.LOG_FILE = os.path.join(base_dir, "bot.log")
+        
+        # Token Limits
+        # Use MAX_TOKENS (explicit) or TOKEN_LIMIT (legacy/user preference)
+        env_token_limit = os.getenv("MAX_TOKENS") or os.getenv("TOKEN_LIMIT") or "4096"
+        self.MAX_TOKENS = int(env_token_limit) # Context Window
+        self.MAX_GENERATION = int(os.getenv("MAX_GENERATION", "4096")) # Output Limit
 
         # Security
         self.DASHBOARD_PASSWORD = os.getenv("DASHBOARD_PASSWORD")
+        self.ADMIN_USER = os.getenv("ADMIN_USER")
 
     def validate(self):
         """Checks for critical missing keys."""

@@ -13,22 +13,16 @@ import math
 import sys
 import subprocess
 import base64
+from bot_config import settings
 # Force environment cleanup for search
 try:
-    from duckduckgo_search import DDGS
+    from ddgs import DDGS
 except ImportError:
     try:
-        from ddgs import DDGS
+        from duckduckgo_search import DDGS
     except ImportError:
-        import importlib
-        print("🧠 Brain: Verifying search dependencies...")
-        subprocess.check_call([sys.executable, "-m", "pip", "uninstall", "-y", "duckduckgo-search"], stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL)
-        subprocess.check_call([sys.executable, "-m", "pip", "install", "-U", "ddgs"], stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL)
-        importlib.invalidate_caches()
-        try:
-            from duckduckgo_search import DDGS
-        except ImportError:
-            from ddgs import DDGS
+        logging.error("🧠 Brain: Search dependencies (ddgs/duckduckgo_search) missing.")
+        DDGS = None
 
 try:
     import requests
@@ -95,7 +89,7 @@ class CognitiveEngine:
     def count_tokens(self, text):
         return self.memory_engine.count_tokens(text)
 
-    async def decide_context(self, system_base, user_msg, rag_memories, short_term_history, max_tokens=30000):
+    async def decide_context(self, system_base, user_msg, rag_memories, short_term_history, max_tokens=settings.MAX_TOKENS):
         """
         Intelligently assembles context within token limits.
         Returns: (final_history_list, final_memories_list)
@@ -237,7 +231,7 @@ class CognitiveEngine:
             else:
                 return "Error: SD-API.json template not found."
 
-            # Fast Fallback: Noodlebrain usually expects Node 6=Positive (or 3 in this template), Node 11=Seed
+            # Fast Fallback: Tars usually expects Node 6=Positive (or 3 in this template), Node 11=Seed
             if "3" in workflow and "inputs" in workflow["3"]:
                 workflow["3"]["inputs"]["text"] = prompt
             
@@ -337,18 +331,34 @@ class CognitiveEngine:
         except: return "API Error"
         
     async def web_search(self, query):
+        lib_name = "ddgs" if "ddgs" in sys.modules else "duckduckgo_search"
+        logging.info(f"🔎 Brain: Web Search ({lib_name}) triggered for '{query}'")
+        if not DDGS:
+            return "Search disabled: search library not found."
+            
         try:
             loop = asyncio.get_event_loop()
-            def search():
+            def search(backend=None):
                 with DDGS() as ddgs:
-                    # backend='html' is often more stable than 'api'
-                    return list(ddgs.text(query, max_results=3, backend="html"))
+                    # Try with default backend first, then 'html' if it fails
+                    return list(ddgs.text(query, max_results=8, backend=backend) if backend else ddgs.text(query, max_results=8))
             
             results = await loop.run_in_executor(None, search)
-            if not results: return "No results."
+            
+            # Fallback to 'html' backend if empty
+            if not results:
+                logging.info(f"🔎 Brain: No results with default backend, trying 'html'...")
+                results = await loop.run_in_executor(None, search, "html")
+
+            if not results:
+                logging.warning(f"🔎 Brain: Search returned 0 results for '{query}'")
+                return f"No results. (Lib: {lib_name}, Query: '{query}')\nDuckDuckGo might be throttling this IP or the query is too specific."
+            
+            logging.info(f"🔎 Brain: Found {len(results)} results.")
             return "\n".join([f"- {r['title']}: {r['href']} ({r['body']})" for r in results])
         except Exception as e: 
-            return f"Search failed: {e}"
+            logging.error(f"🔎 Brain: Search failed: {e}")
+            return f"Search failed ({lib_name}): {e}"
 
     async def browse_web(self, url):
         """Visits a URL and returns a summary of the text."""
@@ -463,12 +473,8 @@ Directly addressed to Tars? YES/NO:<end_of_turn>
         t_gather = time.time()
         
         # 2. RETRIEVE MEMORIES
-        mem_results = self.memory_engine.collection.query(
-            query_texts=[user_text],
-            where={"$and": [{"user_id": str(user_id)}, {"guild_id": str(guild_id)}]},
-            n_results=10
-        )
-        rag_mems = mem_results.get('documents', [[]])[0]
+        # Search ALL user memories in this guild (Cross-User Context)
+        rag_mems = self.memory_engine.search_memories(user_text, guild_id, user_id=user_id, n_results=5)
         
         # Rerank Memories
         # if rag_mems:
@@ -531,7 +537,7 @@ Directly addressed to Tars? YES/NO:<end_of_turn>
                 ],
                 # REMOVED NATIVE TOOLS -> tools=self.get_tools_schema(),
                 temperature=0.88,
-                max_tokens=4096,
+                max_tokens=settings.MAX_GENERATION,
                 timeout=30
             )
             msg = completion.choices[0].message
@@ -623,12 +629,8 @@ Directly addressed to Tars? YES/NO:<end_of_turn>
         user_facts = await self.memory_engine.get_facts(user_id)
         
         # 2. RETRIEVE (Same as before)
-        mem_results = self.memory_engine.collection.query(
-            query_texts=[user_text],
-            where={"$and": [{"user_id": str(user_id)}, {"guild_id": str(guild_id)}]},
-            n_results=10
-        )
-        rag_mems = mem_results.get('documents', [[]])[0]
+        # Search ALL user memories in this guild (Cross-User Context)
+        rag_mems = self.memory_engine.search_memories(user_text, guild_id, n_results=5)
         
         dream_results = self.memory_engine.collection.query(
             query_texts=[user_text],
@@ -680,11 +682,11 @@ Directly addressed to Tars? YES/NO:<end_of_turn>
                     {"role": "user", "content": message_payload}
                 ],
                 temperature=0.88,
-                max_tokens=4096, # Reset to standard output limit
+                max_tokens=settings.MAX_GENERATION, # Reset to standard output limit
                 timeout=45,
                 stream=True # ENABLE STREAMING
             )
-            logging.info(f"🧠 Streaming with max_tokens=4096...")
+            logging.info(f"🧠 Streaming with max_tokens={settings.MAX_GENERATION}...")
             
             async for chunk in stream:
                 if chunk.choices and chunk.choices[0].delta.content:

@@ -8,7 +8,7 @@ class Voice(commands.Cog):
     def __init__(self, bot):
         self.bot = bot
 
-    @commands.command()
+    @commands.command(name="join", description="Joins your current voice channel so I can listen and speak.")
     async def join(self, ctx):
         """Joins the user's voice channel."""
         if not ctx.guild:
@@ -34,7 +34,7 @@ class Voice(commands.Cog):
         else:
             await ctx.send("❌ You need to be in a voice channel first.")
 
-    @commands.command()
+    @commands.command(name="leave", description="Disconnects from the current voice channel.")
     async def leave(self, ctx):
         """Leaves the voice channel."""
         if ctx.voice_client:
