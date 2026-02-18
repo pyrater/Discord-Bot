@@ -2,7 +2,7 @@
 /* Premium, Glassmorphism, Animated */
 
 /* FONTS */
-@import url('https://fonts.googleapis.com/css2?family=Orbitron:wght@400;500;700;900&family=Rajdhani:wght@300;500;700&family=Share+Tech+Mono&display=swap');
+@import url('https://fonts.googleapis.com/css2?family=Orbitron:wght@400;500;700;900&family=Space+Grotesk:wght@300;400;500;700&family=JetBrains+Mono&display=swap');
 
 :root {
     --bg-deep: #020202;
@@ -21,24 +21,30 @@
 /* GLOBAL RESET */
 .stApp {
     background-color: var(--bg-deep);
-    background-image: 
+    background-image:
         radial-gradient(circle at 15% 50%, rgba(20, 20, 20, 1) 0%, transparent 25%),
         radial-gradient(circle at 85% 30%, rgba(10, 10, 30, 0.4) 0%, transparent 25%);
-    font-family: 'Rajdhani', sans-serif;
+    font-family: 'Space Grotesk', sans-serif;
     color: var(--text-primary);
 }
 
 /* HEADERS */
-h1, h2, h3, .stsubheader, .stTitle {
+h1,
+h2,
+h3,
+.stsubheader,
+.stTitle {
     font-family: 'Orbitron', sans-serif;
     text-transform: uppercase;
     letter-spacing: 2px;
     color: var(--text-primary) !important;
-    text-shadow: 0 0 10px rgba(0,0,0,0.5);
+    text-shadow: 0 0 10px rgba(0, 0, 0, 0.5);
     border: none !important;
 }
 
-h1 span, h2 span, h3 span {
+h1 span,
+h2 span,
+h3 span {
     color: var(--tars-amber) !important;
     text-shadow: 0 0 15px var(--tars-amber-glow);
 }
@@ -56,14 +62,15 @@ div[data-testid="stMetric"] {
     border: var(--glass-border);
     padding: 15px;
     border-radius: 8px;
-    backdrop-filter: blur(8px);
+    backdrop-filter: blur(25px);
+    /* Deepened blur */
     box-shadow: var(--card-shadow);
     transition: transform 0.3s ease, box-shadow 0.3s ease;
 }
 
 div[data-testid="stMetric"]:hover {
     transform: translateY(-2px);
-    box-shadow: 0 8px 30px rgba(0,0,0,0.6), 0 0 10px var(--tars-cyan-glow);
+    box-shadow: 0 8px 30px rgba(0, 0, 0, 0.6), 0 0 10px var(--tars-cyan-glow);
     border-color: var(--tars-cyan);
 }
 
@@ -74,7 +81,7 @@ div[data-testid="stMetric"]:hover {
 }
 
 [data-testid="stMetricLabel"] {
-    font-family: 'Rajdhani', sans-serif;
+    font-family: 'Space Grotesk', sans-serif;
     font-weight: 700;
     text-transform: uppercase;
     letter-spacing: 1px;
@@ -88,31 +95,31 @@ div[data-testid="stMetric"]:hover {
     overflow: hidden;
 }
 
-div[data-testid="stDataFrame"] > div {
+div[data-testid="stDataFrame"]>div {
     background: transparent !important;
 }
 
 /* INPUT FIELDS */
-.stTextInput > div > div > input, 
-.stTextArea > div > div > textarea, 
-.stSelectbox > div > div > div {
+.stTextInput>div>div>input,
+.stTextArea>div>div>textarea,
+.stSelectbox>div>div>div {
     background-color: rgba(0, 0, 0, 0.3);
     color: var(--tars-cyan);
     border: 1px solid rgba(255, 255, 255, 0.1);
-    font-family: 'Share Tech Mono', monospace;
+    font-family: 'JetBrains Mono', monospace;
     transition: all 0.3s ease;
     border-radius: 4px;
 }
 
-.stTextInput > div > div > input:focus, 
-.stTextArea > div > div > textarea:focus {
+.stTextInput>div>div>input:focus,
+.stTextArea>div>div>textarea:focus {
     border-color: var(--tars-cyan);
     box-shadow: 0 0 15px var(--tars-cyan-glow);
     background-color: rgba(0, 240, 255, 0.05);
 }
 
 /* BUTTONS */
-div.stButton > button {
+div.stButton>button {
     background: linear-gradient(135deg, rgba(255, 255, 255, 0.05) 0%, rgba(255, 255, 255, 0.01) 100%) !important;
     border: 1px solid rgba(255, 255, 255, 0.1) !important;
     color: var(--text-primary) !important;
@@ -126,27 +133,29 @@ div.stButton > button {
     overflow: hidden;
 }
 
-div.stButton > button::before {
+div.stButton>button::before {
     content: '';
     position: absolute;
-    top: 0; left: -100%;
-    width: 100%; height: 100%;
+    top: 0;
+    left: -100%;
+    width: 100%;
+    height: 100%;
     background: linear-gradient(90deg, transparent, rgba(255, 255, 255, 0.1), transparent);
     transition: 0.5s;
 }
 
-div.stButton > button:hover::before {
+div.stButton>button:hover::before {
     left: 100%;
 }
 
-div.stButton > button:hover {
+div.stButton>button:hover {
     border-color: var(--tars-cyan) !important;
     color: var(--tars-cyan) !important;
     box-shadow: 0 0 20px var(--tars-cyan-glow);
     transform: translateY(-1px);
 }
 
-div.stButton > button:active {
+div.stButton>button:active {
     transform: scale(0.98);
 }
 
@@ -176,23 +185,41 @@ button[kind="primary"]:hover {
 
 /* ANIMATIONS */
 @keyframes fadeIn {
-    from { opacity: 0; transform: translateY(10px); }
-    to { opacity: 1; transform: translateY(0); }
+    from {
+        opacity: 0;
+        transform: translateY(10px);
+    }
+
+    to {
+        opacity: 1;
+        transform: translateY(0);
+    }
 }
 
-.element-container, .stMarkdown, .stMetric {
+.element-container,
+.stMarkdown,
+.stMetric {
     animation: fadeIn 0.6s cubic-bezier(0.2, 0.8, 0.2, 1) forwards;
 }
 
 @keyframes scanline {
-    0% { transform: translateY(-100%); opacity: 0.05; }
-    100% { transform: translateY(100%); opacity: 0.05; }
+    0% {
+        transform: translateY(-100%);
+        opacity: 0.05;
+    }
+
+    100% {
+        transform: translateY(100%);
+        opacity: 0.05;
+    }
 }
 
 .scanline-overlay {
     position: fixed;
-    top: 0; left: 0;
-    width: 100vw; height: 100vh;
+    top: 0;
+    left: 0;
+    width: 100vw;
+    height: 100vh;
     background: linear-gradient(to bottom, transparent 50%, rgba(0, 255, 255, 0.02) 51%, transparent 52%);
     background-size: 100% 4px;
     pointer-events: none;
@@ -223,13 +250,16 @@ div[data-testid="stChatMessage"][data-testid="assistant"] {
     width: 8px;
     height: 8px;
 }
+
 ::-webkit-scrollbar-track {
     background: #050505;
 }
+
 ::-webkit-scrollbar-thumb {
     background: #333;
     border-radius: 4px;
 }
+
 ::-webkit-scrollbar-thumb:hover {
     background: var(--tars-cyan);
 }
