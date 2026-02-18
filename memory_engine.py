@@ -229,16 +229,19 @@ class MemoryEngine:
         return len(self._encoding.encode(text))
     async def _process_fact_queue(self):
         """Worker loop to process fact extraction sequentially."""
+        logging.info("🧠 Memory Engine: Fact Extraction Worker Started and waiting for tasks.")
         while True:
             user_id, username, user_text, llm_client, model_name = await self.fact_queue.get()
+            logging.info(f"🧠 Memory Engine: Processing fact extraction task for {username}...")
             try:
                 # Wait a bit to let the main chat interaction clear the concurrency slot
                 await asyncio.sleep(2.0) 
                 await self._extract_facts_logic(user_id, username, user_text, llm_client, model_name)
             except Exception as e:
-                logging.error(f"Fact queue error: {e}")
+                logging.error(f"❌ Fact queue error: {e}")
             finally:
                 self.fact_queue.task_done()
+                logging.info(f"🧠 Memory Engine: Fact task for {username} marked as done.")
 
     async def queue_fact_extraction(self, user_id, username, user_text, llm_client, model_name):
         """Adds a fact extraction task to the background queue."""
@@ -248,6 +251,7 @@ class MemoryEngine:
         """
         Internal logic to call LLM and store facts.
         """
+        logging.info(f"🔎 Memory Engine: Extracting facts from: '{user_text[:50]}...'")
         extraction_prompt = f"""
         Extract permanent facts about the user from this message. 
         Format as a JSON list of objects with keys: "subject", "predicate", "object", "overwrite".

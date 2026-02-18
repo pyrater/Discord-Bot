@@ -33,12 +33,6 @@ import memory_engine as mem_engine_module
 import brain as brain_module
 import voice_engine as v_engine
 
-# Initialize Engines
-memory_engine = mem_engine_module.MemoryEngine(
-    db_path=settings.DB_PATH,
-    chroma_path=settings.CHROMA_PATH
-)
-
 voice_engine = v_engine
 
 # --- LOGGING SETUP ---
@@ -50,13 +44,13 @@ class NoCryptoErrorFilter(logging.Filter):
 logging.getLogger("discord.ext.voice_recv.reader").addFilter(NoCryptoErrorFilter())
 logging.getLogger("discord.ext.voice_recv.reader").setLevel(logging.ERROR)
 
-# Configure Root Logger
+# Configure Root Logger (Rotating)
 logging.basicConfig(
-    level=logging.INFO,
-    format='%(asctime)s [%(levelname)s]: %(message)s',
+    level=logging.INFO, 
+    format="%(asctime)s [%(levelname)s]: %(message)s",
     handlers=[
         logging.StreamHandler(sys.stdout),
-        logging.FileHandler(settings.LOG_FILE, mode='a')
+        logging.handlers.RotatingFileHandler(settings.LOG_FILE, maxBytes=5*1024*1024, backupCount=3, encoding='utf-8')
     ]
 )
 
@@ -84,15 +78,6 @@ encoding = tiktoken.get_encoding("cl100k_base")
 @lru_cache(maxsize=2048)
 def count_tokens(text):
     return len(encoding.encode(text))
-
-logging.basicConfig(
-    level=logging.INFO, 
-    format="%(asctime)s [%(levelname)s]: %(message)s",
-    handlers=[
-        logging.StreamHandler(),
-        logging.handlers.RotatingFileHandler(settings.LOG_FILE, maxBytes=5*1024*1024, backupCount=3, encoding='utf-8')
-    ]
-)
 
 # Constants from Settings
 # settings.DISCORD_TOKEN, etc are used directly below.

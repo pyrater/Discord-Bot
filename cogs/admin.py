@@ -183,6 +183,18 @@ class Admin(commands.Cog):
         else:
              await ctx.send("🧠 Memory Engine offline.")
     
+    @commands.hybrid_command(name="restart", description="Restarts the bot (Admin Only).")
+    async def restart(self, ctx):
+        """Kills the bot process, supervisor loop will restart it."""
+        if not self.is_admin(ctx):
+            await ctx.send(f"🚫 Access Denied. You are not {settings.ADMIN_USER}.")
+            return
+            
+        await ctx.send("🔄 **Restarting TARS service...** See you in a few seconds.")
+        # Note: Supervisor loop in boot.sh will restart the process
+        # We exit with 0 to signal a clean restart request
+        sys.exit(0)
+    
     @commands.hybrid_command(name="ingest", description="Run knowledge ingestion script. (Admin Only)")
     async def ingest(self, ctx):
         """Manually trigger the ingestion process."""
