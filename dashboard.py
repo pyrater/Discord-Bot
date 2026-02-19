@@ -1660,6 +1660,7 @@ with tab_conf:
                     st.success("Persona updated via Form!")
         except Exception as e:
             st.error(f"Error loading JSON: {e}")
+    else:
         st.error("TARS.json not found.")
 
     st.divider()
