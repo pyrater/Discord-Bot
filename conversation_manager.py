@@ -234,8 +234,19 @@ class ConversationManager:
                  None, 
                  lambda: self.memory_engine.store_observation(user_id, user.display_name, user_text, guild_id, channel_id)
              )
+
+             # Queue fact extraction for observations too
+             await self.memory_engine.queue_fact_extraction(
+                 user_id, 
+                 user.display_name, 
+                 user_text, 
+                 self.ai_client, 
+                 settings.MODEL_NAME,
+                 guild_id
+             )
+
              guild_name = guild.name if guild else "DM"
-             logging.info(f"💾 [{guild_name}] {user.display_name}: {user_text}")
+             logging.info(f"💾 [{guild_name}] {user.display_name} (Observed): {user_text}")
              
         except Exception as e:
             logging.error(f"Passive Listen Error: {e}")
@@ -291,7 +302,8 @@ class ConversationManager:
                         username,
                         prompt, 
                         self.ai_client, 
-                        settings.MODEL_NAME
+                        settings.MODEL_NAME,
+                        guild_id
                     )
                     
                     logging.info(f"✅ ChromaDB and Fact Extraction queued for {username}")

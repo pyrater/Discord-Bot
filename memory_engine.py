@@ -177,6 +177,7 @@ class MemoryEngine:
             conn.execute("""CREATE TABLE IF NOT EXISTS facts 
                          (id INTEGER PRIMARY KEY AUTOINCREMENT, 
                           user_id TEXT, 
+                          guild_id TEXT DEFAULT 'DM',
                           subject TEXT, 
                           predicate TEXT, 
                           object TEXT, 
@@ -202,6 +203,11 @@ class MemoryEngine:
             except sqlite3.OperationalError: pass 
             try:
                 conn.execute("ALTER TABLE audit_logs ADD COLUMN memories_retrieved TEXT")
+            except sqlite3.OperationalError: pass
+
+            # Migration for facts table: Add guild_id
+            try:
+                conn.execute("ALTER TABLE facts ADD COLUMN guild_id TEXT DEFAULT 'DM'")
             except sqlite3.OperationalError: pass
     
             # 3. Emotional State
@@ -231,29 +237,29 @@ class MemoryEngine:
         """Worker loop to process fact extraction sequentially."""
         logging.info("🧠 Memory Engine: Fact Extraction Worker Started and waiting for tasks.")
         while True:
-            user_id, username, user_text, llm_client, model_name = await self.fact_queue.get()
-            logging.info(f"🧠 Memory Engine: Processing fact extraction task for {username}...")
+            user_id, username, user_text, llm_client, model_name, guild_id = await self.fact_queue.get()
+            logging.info(f"🧠 Memory Engine: Processing fact extraction task for {username} in {guild_id}...")
             try:
                 # Wait a bit to let the main chat interaction clear the concurrency slot
                 await asyncio.sleep(2.0) 
-                await self._extract_facts_logic(user_id, username, user_text, llm_client, model_name)
+                await self._extract_facts_logic(user_id, username, user_text, llm_client, model_name, guild_id)
             except Exception as e:
                 logging.error(f"❌ Fact queue error: {e}")
             finally:
                 self.fact_queue.task_done()
                 logging.info(f"🧠 Memory Engine: Fact task for {username} marked as done.")
 
-    async def queue_fact_extraction(self, user_id, username, user_text, llm_client, model_name):
+    async def queue_fact_extraction(self, user_id, username, user_text, llm_client, model_name, guild_id="DM"):
         """Adds a fact extraction task to the background queue."""
-        await self.fact_queue.put((user_id, username, user_text, llm_client, model_name))
+        await self.fact_queue.put((user_id, username, user_text, llm_client, model_name, guild_id))
 
-    async def _extract_facts_logic(self, user_id, username, user_text, llm_client, model_name):
+    async def _extract_facts_logic(self, user_id, username, user_text, llm_client, model_name, guild_id="DM"):
         """
         Internal logic to call LLM and store facts.
         """
         logging.info(f"🔎 Memory Engine: Extracting facts from: '{user_text[:50]}...'")
         extraction_prompt = f"""
-        Extract permanent facts about the user from this message. 
+        Extract permanent facts from this message. 
         Format as a JSON list of objects with keys: "subject", "predicate", "object", "overwrite".
         Self-reference (I, my) should be normalized to "{username}".
         "overwrite": boolean. Set to true ONLY if this fact explicitly corrects or updates a previous fact (e.g., "My name is actually...").
@@ -279,12 +285,12 @@ class MemoryEngine:
                     with self._get_connection() as conn:
                         for f in facts:
                             if f.get('overwrite'):
-                                logging.info(f"✏️ Overwriting fact for {user_id}: {f.get('subject')} {f.get('predicate')}")
-                                conn.execute("DELETE FROM facts WHERE user_id = ? AND subject = ? AND predicate = ?", 
-                                             (str(user_id), f.get('subject'), f.get('predicate')))
+                                logging.info(f"✏️ Overwriting fact for {user_id} in {guild_id}: {f.get('subject')} {f.get('predicate')}")
+                                conn.execute("DELETE FROM facts WHERE user_id = ? AND guild_id = ? AND subject = ? AND predicate = ?", 
+                                             (str(user_id), str(guild_id), f.get('subject'), f.get('predicate')))
                             
-                            conn.execute("INSERT INTO facts (user_id, subject, predicate, object, confidence, timestamp) VALUES (?, ?, ?, ?, ?, ?)",
-                                         (str(user_id), f.get('subject'), f.get('predicate'), f.get('object'), 0.9, datetime.now().isoformat()))
+                            conn.execute("INSERT INTO facts (user_id, guild_id, subject, predicate, object, confidence, timestamp) VALUES (?, ?, ?, ?, ?, ?, ?)",
+                                         (str(user_id), str(guild_id), f.get('subject'), f.get('predicate'), f.get('object'), 0.9, datetime.now().isoformat()))
                         conn.commit()
 
                 loop = asyncio.get_event_loop()
@@ -294,11 +300,28 @@ class MemoryEngine:
         except Exception as e:
             logging.error(f"Fact extraction failed: {e}")
 
-    async def get_facts(self, user_id):
-        """Retrieves knowledge graph facts for a user."""
+    async def get_facts(self, user_id, guild_id="DM"):
+        """
+        Retrieves knowledge graph facts for a user with privacy filtering.
+        - Privacy Rules:
+            1. If guild_id is 'DM', returns ONLY that user's DM facts.
+            2. If guild_id is a server, returns facts for THAT SERVER (shared context).
+        """
         def _fetch_facts():
             with self._get_connection(use_row_factory=True) as conn:
-                cursor = conn.execute("SELECT subject, predicate, object FROM facts WHERE user_id = ? ORDER BY timestamp DESC LIMIT 10", (str(user_id),))
+                uid = str(user_id)
+                gid = str(guild_id)
+                
+                if gid == "DM":
+                    # Private DMs: Only facts from DMs for THIS user
+                    query = "SELECT subject, predicate, object FROM facts WHERE user_id = ? AND guild_id = 'DM' ORDER BY timestamp DESC LIMIT 10"
+                    params = (uid,)
+                else:
+                    # Public Servers: Shared facts for THIS guild
+                    query = "SELECT subject, predicate, object FROM facts WHERE guild_id = ? ORDER BY timestamp DESC LIMIT 10"
+                    params = (gid,)
+                
+                cursor = conn.execute(query, params)
                 return cursor.fetchall()
 
         loop = asyncio.get_event_loop()
@@ -334,9 +357,11 @@ class MemoryEngine:
 
     def store_memory(self, user_id, username, prompt, response, guild_id="DM", channel_id="DM", emotion="neutral"):
         """Stores interaction in ChromaDB."""
+        # Use a more unique ID to prevent collisions during rapid interaction
+        mem_id = f"mem_{datetime.now().timestamp()}_{user_id}"
         self.collection.add(
             documents=[f"{username} said: {prompt} | Tars replied: {response}"],
-            ids=[str(datetime.now().timestamp())],
+            ids=[mem_id],
             metadatas=[{
                 "user_id": str(user_id),
                 "username": str(username),
@@ -348,9 +373,11 @@ class MemoryEngine:
 
     def store_observation(self, user_id, username, text, guild_id="DM", channel_id="DM"):
         """Stores a passive observation (user message without bot reply)."""
+        # Use a more unique ID to prevent collisions
+        obs_id = f"obs_{datetime.now().timestamp()}_{user_id}"
         self.collection.add(
             documents=[f"{username} observed: {text}"],
-            ids=[str(datetime.now().timestamp())],
+            ids=[obs_id],
             metadatas=[{
                 "user_id": str(user_id),
                 "username": str(username),
@@ -415,10 +442,11 @@ class MemoryEngine:
         - If guild_id is "DM", RESTRICTS to user_id (Private).
         - If guild_id is valid, SEARCHES ALL users (Cross-User Context).
         """
-        where_filter = {"guild_id": str(guild_id)}
+        guild_id_str = str(guild_id)
+        where_filter = {"guild_id": guild_id_str}
         
         # Enforce Privacy for DMs
-        if str(guild_id) == "DM" and user_id:
+        if guild_id_str == "DM" and user_id:
             where_filter = {"$and": [{"guild_id": "DM"}, {"user_id": str(user_id)}]}
             
         results = self.collection.query(

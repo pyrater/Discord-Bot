@@ -22,3 +22,5 @@ soundfile
 pytest
 pytest-asyncio
 llama-cpp-python
+pandas
+matplotlib

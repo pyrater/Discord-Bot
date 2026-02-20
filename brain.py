@@ -469,7 +469,7 @@ Directly addressed to Tars? YES/NO:<end_of_turn>
         
         # 1. GATHER DATA
         vibe_str = await self.memory_engine.get_noodle_vibe(user_id)
-        user_facts = await self.memory_engine.get_facts(user_id)
+        user_facts = await self.memory_engine.get_facts(user_id, guild_id)
         t_gather = time.time()
         
         # 2. RETRIEVE MEMORIES
@@ -626,11 +626,11 @@ Directly addressed to Tars? YES/NO:<end_of_turn>
         
         # 1. GATHER (Same as before)
         vibe_str = await self.memory_engine.get_noodle_vibe(user_id)
-        user_facts = await self.memory_engine.get_facts(user_id)
+        user_facts = await self.memory_engine.get_facts(user_id, guild_id)
         
         # 2. RETRIEVE (Same as before)
         # Search ALL user memories in this guild (Cross-User Context)
-        rag_mems = self.memory_engine.search_memories(user_text, guild_id, n_results=5)
+        rag_mems = self.memory_engine.search_memories(user_text, guild_id, user_id=user_id, n_results=5)
         
         dream_results = self.memory_engine.collection.query(
             query_texts=[user_text],

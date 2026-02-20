@@ -7,10 +7,12 @@ import chromadb
 import httpx
 import asyncio
 import json
+import html
 import subprocess
 import io
 import hmac # For secure password comparison
 import zipfile
+import base64
 try:
     from graphviz import Digraph # For Knowledge Graph Viz
     HAS_GRAPHVIZ = True
@@ -260,6 +262,31 @@ div[data-testid="stButton"] button:contains("SHUTDOWN"):hover {
 ::-webkit-scrollbar-thumb { background: #333; border-radius: 4px; }
 ::-webkit-scrollbar-thumb:hover { background: var(--tars-cyan); }
 
+/* --- DEBUG VIEWS --- */
+.debug-label {
+    font-family: 'Orbitron', sans-serif !important;
+    font-size: 9px !important;
+    color: var(--text-secondary) !important;
+    text-transform: uppercase !important;
+    letter-spacing: 1px !important;
+    margin-bottom: 4px !important;
+    margin-top: 10px !important;
+}
+.debug-box {
+    background: rgba(0, 0, 0, 0.4) !important;
+    border: 1px solid rgba(0, 240, 255, 0.1) !important;
+    border-radius: 6px !important;
+    padding: 10px !important;
+    font-family: 'JetBrains Mono', monospace !important;
+    font-size: 9px !important;
+    color: var(--tars-cyan) !important;
+    min-height: 40px !important;
+    max-height: 200px !important;
+    overflow-y: auto !important;
+    white-space: pre-wrap !important;
+    word-break: break-all !important;
+}
+
 </style>
 """
 
@@ -269,7 +296,7 @@ def nexus_header():
     
     # Calculate Neural Stress from recent audit logs
     try:
-        df = get_audit_logs(limit=20)
+        df = get_audit_logs().head(20)
         error_count = len(df[df['mood'].str.lower().str.contains('error|fail|warn', na=False)])
         neural_stress = min(1.0, error_count / 10.0)
         last_mood = df.iloc[0]['mood'] if not df.empty else "STANDBY"
@@ -434,144 +461,7 @@ if not check_password():
 st.set_page_config(page_title="TARS Nexus Core", layout="wide", page_icon="🤖")
 st.markdown(GLOBAL_CSS, unsafe_allow_html=True)
 
-# --- GLOBAL COSMIC SMOKE BACKGROUND ---
-st.components.v1.html("""
-<script>
-(function() {
-    const parentDoc = window.parent.document;
-    if (parentDoc.getElementById('cosmic-bg-container')) return;
-    
-    // Create background container
-    const container = parentDoc.createElement('div');
-    container.id = 'cosmic-bg-container';
-    container.style.cssText = 'position:fixed; top:0; left:0; width:100vw; height:100vh; z-index:-1; pointer-events:none; background:#020202;';
-    
-    const canvas = parentDoc.createElement('canvas');
-    canvas.id = 'hero-canvas';
-    canvas.style.cssText = 'width:100%; height:100%; display:block;';
-    container.appendChild(canvas);
-    
-    parentDoc.body.prepend(container);
-
-    // Simplex Noise Implementation
-    const SimplexNoise = (function () {
-      const F3 = 1 / 3, G3 = 1 / 6;
-      const grad3 = [[1, 1, 0], [-1, 1, 0], [1, -1, 0], [-1, -1, 0], [1, 0, 1], [-1, 0, 1], [1, 0, -1], [-1, 0, -1], [0, 1, 1], [0, -1, 1], [0, 1, -1], [0, -1, -1]];
-      const p = [151, 160, 137, 91, 90, 15, 131, 13, 201, 95, 96, 53, 194, 233, 7, 225, 140, 36, 103, 30, 69, 142, 8, 99, 37, 240, 21, 10, 23, 190, 6, 148, 247, 120, 234, 75, 0, 26, 197, 62, 94, 252, 219, 203, 117, 35, 11, 32, 57, 177, 33, 88, 237, 149, 56, 87, 174, 20, 125, 136, 171, 168, 68, 175, 74, 165, 71, 134, 139, 48, 27, 166, 77, 146, 158, 231, 83, 111, 229, 122, 60, 211, 133, 230, 220, 105, 92, 41, 55, 46, 245, 40, 244, 102, 143, 54, 65, 25, 63, 161, 1, 216, 80, 73, 209, 76, 132, 187, 208, 89, 18, 169, 200, 196, 135, 130, 116, 188, 159, 86, 164, 100, 109, 198, 173, 186, 3, 64, 52, 217, 226, 250, 124, 123, 5, 202, 38, 147, 118, 126, 255, 82, 85, 212, 207, 206, 59, 227, 47, 16, 58, 17, 182, 189, 28, 42, 223, 183, 170, 213, 119, 248, 152, 2, 44, 154, 163, 70, 221, 153, 101, 155, 167, 43, 172, 9, 129, 22, 39, 253, 19, 98, 108, 110, 79, 113, 224, 232, 178, 185, 112, 104, 218, 246, 97, 228, 251, 34, 242, 193, 238, 210, 144, 12, 191, 179, 162, 241, 81, 51, 145, 235, 249, 14, 239, 107, 49, 192, 214, 31, 181, 199, 106, 157, 184, 84, 204, 176, 115, 121, 50, 45, 127, 4, 150, 254, 138, 236, 205, 93, 222, 114, 67, 29, 24, 72, 243, 141, 128, 195, 78, 66, 215, 61, 156, 180];
-      const perm = new Array(512), permMod12 = new Array(512);
-      for (let i = 0; i < 512; i++) { perm[i] = p[i & 255]; permMod12[i] = perm[i] % 12; }
-      function dot3(g, x, y, z) { return g[0] * x + g[1] * y + g[2] * z; }
-      return {
-        noise3D: function (xin, yin, zin) {
-          let s = (xin + yin + zin) * F3;
-          let i = Math.floor(xin + s), j = Math.floor(yin + s), k = Math.floor(zin + s);
-          let t = (i + j + k) * G3;
-          let X0 = i - t, Y0 = j - t, Z0 = k - t;
-          let x0 = xin - X0, y0 = yin - Y0, z0 = zin - Z0;
-          let i1, j1, k1, i2, j2, k2;
-          if (x0 >= y0) { if (y0 >= z0) { i1 = 1; j1 = 0; k1 = 0; i2 = 1; j2 = 1; k2 = 0 } else if (x0 >= z0) { i1 = 1; j1 = 0; k1 = 0; i2 = 1; j2 = 0; k2 = 1 } else { i1 = 0; j1 = 0; k1 = 1; i2 = 1; j2 = 0; k2 = 1 } }
-          else { if (y0 < z0) { i1 = 0; j1 = 0; k1 = 1; i2 = 0; j2 = 1; k2 = 1 } else if (x0 < z0) { i1 = 0; j1 = 1; k1 = 0; i2 = 0; j2 = 1; k2 = 1 } else { i1 = 0; j1 = 1; k1 = 0; i2 = 1; j2 = 1; k2 = 0 } }
-          let x1 = x0 - i1 + G3, y1 = y0 - j1 + G3, z1 = z0 - k1 + G3;
-          let x2 = x0 - i2 + 2 * G3, y2 = y0 - j2 + 2 * G3, z2 = z0 - k2 + 2 * G3;
-          let x3 = x0 - 1 + 3 * G3, y3 = y0 - 1 + 3 * G3, z3 = z0 - 1 + 3 * G3;
-          let ii = i & 255, jj = j & 255, kk = k & 255;
-          let n0, n1, n2, n3;
-          let t0 = 0.6 - x0 * x0 - y0 * y0 - z0 * z0;
-          if (t0 < 0) n0 = 0; else { t0 *= t0; n0 = t0 * t0 * dot3(grad3[permMod12[ii + perm[jj + perm[kk]]]], x0, y0, z0) }
-          let t1 = 0.6 - x1 * x1 - y1 * y1 - z1 * z1;
-          if (t1 < 0) n1 = 0; else { t1 *= t1; n1 = t1 * t1 * dot3(grad3[permMod12[ii + i1 + perm[jj + j1 + perm[kk + k1]]]], x1, y1, z1) }
-          let t2 = 0.6 - x2 * x2 - y2 * y2 - z2 * z2;
-          if (t2 < 0) n2 = 0; else { t2 *= t2; n2 = t2 * t2 * dot3(grad3[permMod12[ii + i2 + perm[jj + j2 + perm[kk + k2]]]], x2, y2, z2) }
-          let t3 = 0.6 - x3 * x3 - y3 * y3 - z3 * z3;
-          if (t3 < 0) n3 = 0; else { t3 *= t3; n3 = t3 * t3 * dot3(grad3[permMod12[ii + 1 + perm[jj + 1 + perm[kk + 1]]]], x3, y3, z3) }
-          return 32 * (n0 + n1 + n2 + n3);
-        }
-      };
-    })();
-
-    const ctx = canvas.getContext('2d');
-    let w, h, dpr;
-
-    function resize() {
-        dpr = Math.min(window.devicePixelRatio, 2);
-        w = window.innerWidth;
-        h = window.innerHeight;
-        canvas.width = w * dpr;
-        canvas.height = h * dpr;
-        ctx.setTransform(dpr, 0, 0, dpr, 0, 0);
-    }
-    resize();
-    window.addEventListener('resize', resize);
-
-    const WISPS_COUNT = 15;
-    let wisps = [];
-    function createWisp(init = false) {
-        const sourceX = w * 0.95 + Math.random() * w * 0.05;
-        const sourceY = h * 0.48 + (Math.random() - 0.5) * h * 0.4;
-        const scale = Math.random() * 0.8 + 0.6;
-        return {
-          x: init ? Math.random() * w : sourceX,
-          y: init ? (h * 0.48 + (Math.random() - 0.5) * h * 0.5) : sourceY,
-          vx: -(Math.random() * 0.5 + 0.2),
-          vy: (Math.random() - 0.5) * 0.05,
-          width: (Math.random() * 800 + 400) * scale,
-          height: (Math.random() * 200 + 50) * scale,
-          alpha: 0,
-          targetAlpha: Math.random() * 0.12 + 0.04,
-          r: 180 + Math.random() * 75,
-          g: 190 + Math.random() * 65,
-          b: 240 + Math.random() * 15,
-          noiseOffset: Math.random() * 1000,
-          rotation: (Math.random() - 0.5) * 0.15,
-          life: 0,
-          maxLife: Math.random() * 1200 + 800,
-        };
-    }
-    for (let i = 0; i < WISPS_COUNT; i++) wisps.push(createWisp(true));
-
-    const noiseScale = 0.0006, timeScale = 0.00004;
-
-    function draw() {
-        const t = Date.now();
-        ctx.fillStyle = '#020202';
-        ctx.fillRect(0, 0, w, h);
-        ctx.save();
-        ctx.filter = `blur(${Math.min(w, h) * 0.06}px)`;
-        ctx.globalCompositeOperation = 'screen';
-        for (let i = 0; i < wisps.length; i++) {
-          const b = wisps[i];
-          b.life++;
-          if (b.life < 150) b.alpha += (b.targetAlpha / 150);
-          else if (b.life > b.maxLife - 150) b.alpha -= (b.targetAlpha / 150);
-          const nx = b.x * noiseScale + b.noiseOffset;
-          const ny = b.y * noiseScale;
-          const noise = SimplexNoise.noise3D(nx, ny, t * timeScale);
-          b.x += b.vx; b.y += b.vy + noise * 0.3;
-          if (b.alpha <= 0 && b.life > 150) { wisps[i] = createWisp(); continue; }
-          if (b.x < -b.width) { wisps[i] = createWisp(); continue; }
-          ctx.save();
-          ctx.translate(b.x, b.y);
-          ctx.rotate(b.rotation + noise * 0.05);
-          const grad = ctx.createRadialGradient(0, 0, 0, 0, 0, b.width / 2);
-          if (b.noiseOffset > 500) {
-            grad.addColorStop(0, `rgba(${b.r - 20}, ${b.g - 40}, ${b.b}, ${b.alpha})`);
-            grad.addColorStop(1, 'rgba(40, 20, 80, 0)');
-          } else {
-            grad.addColorStop(0, `rgba(${b.r}, ${b.g}, ${b.b}, ${b.alpha})`);
-            grad.addColorStop(1, `rgba(${b.r}, ${b.g}, ${b.b}, 0)`);
-          }
-          ctx.fillStyle = grad;
-          ctx.scale(1, b.height / b.width);
-          ctx.beginPath(); ctx.arc(0, 0, b.width / 2, 0, Math.PI * 2); ctx.fill();
-          ctx.restore();
-        }
-        ctx.restore();
-        requestAnimationFrame(draw);
-    }
-    draw();
-})();
-</script>
-""", height=0)
+# --- DASHBOARD UI ---
 
 # Scanline Overlay (HTML injection)
 st.markdown('<div class="scanline-overlay"></div>', unsafe_allow_html=True)
@@ -599,12 +489,11 @@ def get_tars_brain():
         lazy_load=True
     )
 
+@st.cache_data(ttl=10)
 def get_audit_logs():
     if not os.path.exists(DB_PATH): return pd.DataFrame()
     try:
-        # Use Cached Resource if possible, but for logs we need fresh data often.
-        # However, connecting repeatedly is slow. 
-        # Better approach: Open temp connection for read
+        # Use Cached Resource with short TTL to keep dashboard reasonably live
         conn = sqlite3.connect(f"file:{DB_PATH}?mode=ro", uri=True, timeout=10)
         df = pd.read_sql_query("SELECT * FROM audit_logs ORDER BY timestamp DESC", conn)
         conn.close()
@@ -734,15 +623,15 @@ with tab_cli:
                         background-color: #0d1117;
                         color: #58a6ff;
                         font-family: 'JetBrains Mono', monospace;
-                        font-size: 11px;
-                        line-height: 1.4;
-                        padding: 15px;
-                        border-radius: 8px;
-                        height: 500px;
-                        overflow-y: auto;
-                        white-space: pre-wrap;
-                        border: 1px solid var(--nexus-border);
-                        box-shadow: inset 0 0 10px rgba(0,0,0,0.5);
+                        font-size: 9px !important;
+                        line-height: 1.25 !important;
+                        padding: 10px !important;
+                        border-radius: 8px !important;
+                        height: 500px !important;
+                        overflow-y: auto !important;
+                        white-space: pre-wrap !important;
+                        border: 1px solid rgba(0, 240, 255, 0.15) !important;
+                        box-shadow: inset 0 0 10px rgba(0,0,0,0.5) !important;
                     ">
                         {tail}
                     </div>
@@ -860,6 +749,7 @@ with tab_brain_explorer: # Renamed from tab_brain_explorer to tab_brain in instr
                     node_id = f"mem_{col.name}_{i}"
                     nodes.append({
                         "id": node_id,
+                        # Cleaner name: just the predicate and object
                         "name": display_name,
                         "color": sentiment_color,
                         "size": 8,
@@ -988,22 +878,22 @@ with tab_brain_explorer: # Renamed from tab_brain_explorer to tab_brain in instr
             <button id="toggle-3d" style="background: rgba(15,15,15,0.85); border: 1px solid #444; color:#aaa; padding:10px; border-radius:6px; cursor:pointer;" onclick="window.toggle3D()">[3D MODE]</button>
         </div>
 
-        <div id="brain-details" style="position:absolute; top:20px; right:20px; width:300px; background: rgba(10,10,10,0.95); border: 1px solid rgba(88,166,255,0.3); padding:15px; border-radius:10px; font-family: monospace; font-size:11px; backdrop-filter:blur(15px); z-index:100; box-shadow: 0 10px 40px rgba(0,0,0,0.8); transition: all 0.3s;">
-            <div style="color:#58a6ff; font-weight:bold; border-bottom:1px solid #333; padding-bottom:8px; margin-bottom:10px; letter-spacing:1px; display:flex; justify-content:space-between;">
+        <div id="brain-details" style="position:absolute; top:20px; right:20px; width:300px; background: rgba(10,10,10,0.95); border: 1px solid rgba(0,248,255,0.3); padding:15px; border-radius:10px; font-family: monospace; font-size:11px; backdrop-filter:blur(15px); z-index:100; box-shadow: 0 10px 40px rgba(0,0,0,0.8); transition: all 0.3s;">
+            <div style="color:#7dd3fc; font-weight:bold; border-bottom:1px solid #333; padding-bottom:8px; margin-bottom:10px; letter-spacing:1px; display:flex; justify-content:space-between;">
                 <span>NEURAL TELEMETRY</span>
-                <span id="close-details" style="cursor:pointer; color:#444;" onclick="document.getElementById('full-content').innerText='Select a node to view metadata...'">×</span>
+                <span id="close-details" style="cursor:pointer; color:#777; font-size:14px;" onclick="document.getElementById('brain-details').style.display='none'">×</span>
             </div>
             <div style="display:flex; justify-content:space-between; align-items:center;">
-                <div id="unit-status">Stress: <span style="color:{'#f85149' if neural_stress > 0.7 else '#00ff00'}; font-weight:bold;">{int(neural_stress*100)}%</span></div>
-                <div id="pulse-indicator" style="width:10px; height:10px; border-radius:50%; background:#444; box-shadow: 0 0 8px #444; animation: heartbeat {1.5 - neural_stress}s infinite;"></div>
+                <div id="unit-status" style="color: #7dd3fc;">Stress: <span style="font-weight:bold;">{int(neural_stress*100)}%</span></div>
+                <div id="pulse-indicator" style="width:10px; height:10px; border-radius:50%; background: #444; box-shadow: 0 0 8px #444; animation: heartbeat {1.5 - neural_stress}s infinite;"></div>
             </div>
-            <div id="node-info" style="margin-top:8px; color:#58a6ff; font-weight:bold; font-size:12px;">Target: STANDBY</div>
+            <div id="node-info" style="margin-top:8px; color: #7dd3fc; font-weight:bold; font-size:12px;">Target: STANDBY</div>
             
             <div style="margin-top:12px; border-top:1px solid #222; padding-top:10px;">
-                <div style="color:#888; font-size:10px; margin-bottom:5px; text-transform:uppercase;">Metadata Content:</div>
+                <div style="color: #58a6ff; font-size:10px; margin-bottom:5px; text-transform:uppercase;">Metadata Content:</div>
                 <div id="multimodal-preview" style="display:none; margin-bottom:10px; border-radius:4px; overflow:hidden; border:1px solid #333;"></div>
-                <div id="full-content" style="color:#eee; font-size:11px; line-height:1.4; max-height:250px; overflow-y:auto; word-break:break-word; scrollbar-width:thin;">Select a node to view metadata...</div>
-                <div id="node-meta" style="color:#444; font-size:9px; margin-top:10px; border-top: 1px dashed #333; padding-top:8px; display:none;"></div>
+                <div id="full-content" style="color: #7dd3fc; font-size:11px; line-height:1.4; max-height:250px; overflow-y:auto; word-break:break-word; scrollbar-width:thin;">Select a node to view metadata...</div>
+                <div id="node-meta" style="color: #7dd3fc; font-size:9px; margin-top:10px; border-top: 1px dashed #333; padding-top:8px; display:none;"></div>
             </div>
 
             <div id="button-bridge" style="margin-top:15px; display:none; gap:5px;">
@@ -1011,8 +901,8 @@ with tab_brain_explorer: # Renamed from tab_brain_explorer to tab_brain in instr
                 <button id="edit-btn" style="flex:1; background:rgba(88,166,255,0.1); border:1px solid #58a6ff; color:#58a6ff; padding:5px; font-size:9px; cursor:pointer; border-radius:4px;">[RE-VECTOR]</button>
             </div>
 
-            <div id="diag-info" style="color:#444; margin-top:15px; font-size:9px; border-top: 1px solid #222; padding-top:10px;">Mapped: {len(nodes)} Neural Points</div>
-            <div style="color:#333; font-size:9px; margin-top:5px;">SHIFT+CLICK TO UNPIN • ENTER TO SEARCH</div>
+            <div id="diag-info" style="color: #7dd3fc; margin-top:15px; font-size:9px; border-top: 1px solid #222; padding-top:10px;">Mapped: {len(nodes)} Neural Points</div>
+            <div style="color: #7dd3fc; font-size:9px; margin-top:5px;">SHIFT+CLICK TO UNPIN • ENTER TO SEARCH</div>
         </div>
 
         <style>
@@ -1154,6 +1044,7 @@ with tab_brain_explorer: # Renamed from tab_brain_explorer to tab_brain in instr
                 .attr("r", 1.5).attr("fill", "#fff").style("filter", "blur(1px)");
 
             function focusNode(d, element) {{
+                document.getElementById("brain-details").style.display = "block";
                 document.getElementById("node-info").innerText = "Target: " + d.name.toUpperCase();
                 document.getElementById("full-content").innerText = d.details || "No content.";
                 const metaDiv = document.getElementById("node-meta");
@@ -1670,9 +1561,209 @@ with tab_conf:
         st.session_state['link_strength'] = st.slider("Synapse Strength (Gravity)", 0.1, 2.5, st.session_state['link_strength'], 0.1)
     with col_h2:
         st.session_state['charge_strength'] = st.slider("Repulsion Force", 0.1, 5.0, st.session_state['charge_strength'], 0.1)
+
+# --- BOTTOM WIDGETS ---
+st.divider()
+
+def _mini_bar_svg(pairs):
+    safe_pairs = [(str(k), float(v)) for k, v in pairs if v is not None]
+    if not safe_pairs:
+        return ""
+    max_v = max(v for _, v in safe_pairs) or 1.0
+    rows = []
+    for k, v in safe_pairs[:6]:
+        w = int((v / max_v) * 100)
+        rows.append(
+            f"<div style='display:flex; align-items:center; gap:10px; margin:6px 0;'>"
+            f"<div style='width:86px; font-size:11px; letter-spacing:1px; text-transform:uppercase; color: var(--text-dim); overflow:hidden; text-overflow:ellipsis; white-space:nowrap;'>{k}</div>"
+            f"<div style='flex:1; height:8px; border-radius:999px; background: rgba(0,248,255,0.08); border:1px solid rgba(0,248,255,0.12); overflow:hidden;'>"
+            f"<div style='width:{w}%; height:100%; background: linear-gradient(90deg, rgba(0,248,255,0.9), rgba(168,85,247,0.75)); box-shadow: 0 0 14px rgba(0,248,255,0.28);'></div>"
+            f"</div>"
+            f"<div style='width:32px; text-align:right; font-family: Orbitron, sans-serif; font-size:12px; color: var(--cyan);'>{int(v)}</div>"
+            f"</div>"
+        )
+    return "".join(rows)
+
+def _card(title, icon, body_html):
+    return (
+        f"<div style=\"background: linear-gradient(135deg, rgba(15,18,28,0.92) 0%, rgba(10,12,18,0.86) 100%); "
+        f"border: 1px solid rgba(0,248,255,0.18); border-radius: 16px; padding: 18px 18px 16px; "
+        f"backdrop-filter: blur(28px); box-shadow: 0 10px 40px rgba(0,0,0,0.45), inset 0 1px 0 rgba(255,255,255,0.06);\">"
+        f"<div style=\"display:flex; align-items:center; gap:10px; padding-bottom: 12px; margin-bottom: 14px; "
+        f"border-bottom: 1px solid rgba(0,248,255,0.10);\">"
+        f"<div style=\"width:34px; height:34px; border-radius: 10px; display:flex; align-items:center; justify-content:center; "
+        f"background: rgba(0,248,255,0.08); border: 1px solid rgba(0,248,255,0.22);\">{icon}</div>"
+        f"<div style=\"font-family: Space Grotesk, sans-serif; font-size: 13px; letter-spacing: 1.5px; text-transform: uppercase; "
+        f"color: var(--text); font-weight: 700;\">{title}</div>"
+        f"</div>"
+        f"{body_html}"
+        f"</div>"
+    ).strip()
+
+def _mood_timeline_svg(df):
+    """Optimized SVG timeline instead of heavy matplotlib."""
+    if df is None or getattr(df, 'empty', True): return ""
+    if 'timestamp' not in df.columns or 'mood' not in df.columns: return ""
     
-    st.session_state['grouping_mode'] = st.radio("Clustering Mode", ["Temporal (Radial)", "Semantic (Force)"], 
-                                                 index=0 if st.session_state['grouping_mode'] == "Temporal (Radial)" else 1)
+    # Use native Streamlit chart for interactivity inside the card-like container
+    # But since we are inside an HTML card, we might prefer a micro-chart.
+    # Let's use st.vega_lite_chart if we want it perfect, but for speed let's just 
+    # use a simple sparkline-style SVG if matplotlib was the bottleneck.
+    return "<!-- Interactive Timeline Placeholder -->"
+
+# Create horizontal layout using Streamlit columns
+col1, col2, col3, col4 = st.columns(4)
+
+# Widget 1: Knowledge Graph (pure HTML)
+with col1:
+    try:
+        fact_count = entity_count = relation_count = 0
+        if os.path.exists(DB_PATH):
+            conn = sqlite3.connect(DB_PATH)
+            cursor = conn.cursor()
+            cursor.execute("SELECT COUNT(*) FROM facts")
+            fact_count = int(cursor.fetchone()[0] or 0)
+            cursor.execute("SELECT COUNT(DISTINCT subject) FROM facts")
+            entity_count = int(cursor.fetchone()[0] or 0)
+            cursor.execute("SELECT COUNT(DISTINCT predicate) FROM facts")
+            relation_count = int(cursor.fetchone()[0] or 0)
+            conn.close()
+        density = min(100, int((fact_count / 1000) * 100)) if fact_count else 0
+        body = f"""
+          <div style='display:flex; flex-direction:column; gap:10px;'>
+            <div style='display:flex; justify-content:space-between;'><span style='color: var(--text-dim); font-size:12px;'>Total Facts</span><span style='font-family: Orbitron, sans-serif; color: var(--cyan);'>{fact_count}</span></div>
+            <div style='display:flex; justify-content:space-between;'><span style='color: var(--text-dim); font-size:12px;'>Entities</span><span style='font-family: Orbitron, sans-serif; color: var(--cyan);'>{entity_count}</span></div>
+            <div style='display:flex; justify-content:space-between;'><span style='color: var(--text-dim); font-size:12px;'>Relations</span><span style='font-family: Orbitron, sans-serif; color: var(--cyan);'>{relation_count}</span></div>
+            <div style='margin-top:8px;'>
+              <div style='font-size:10px; letter-spacing:1.5px; text-transform:uppercase; color: var(--text-dim); margin-bottom:8px;'>Graph Density: {density}%</div>
+              <div style='height:10px; border-radius:999px; background: rgba(0,248,255,0.08); border:1px solid rgba(0,248,255,0.14); overflow:hidden;'>
+                <div style='width:{density}%; height:100%; background: linear-gradient(90deg, rgba(0,248,255,0.95), rgba(168,85,247,0.7)); box-shadow: 0 0 18px rgba(0,248,255,0.22);'></div>
+              </div>
+            </div>
+          </div>
+        """
+        st.markdown(_card("Knowledge Graph", "🧠", body), unsafe_allow_html=True)
+    except Exception as e:
+        st.markdown(_card("Knowledge Graph", "🧠", f"<div style='color:#ff6b6b; font-size:12px;'>Error: {str(e)}</div>"), unsafe_allow_html=True)
+
+# Widget 2: CLI Output (pure HTML)
+with col2:
+    try:
+        log_output = ""
+        if os.path.exists(LOG_FILE):
+            with open(LOG_FILE, 'r', encoding='utf-8') as f:
+                log_output = "".join(f.readlines()[-10:]).strip()
+        if not log_output:
+            log_output = "[SYSTEM] Awaiting console output…"
+        safe_log = html.escape(log_output)
+        body = f"""
+          <pre style='margin:0; max-height: 180px; overflow:auto; padding: 8px; border-radius: 8px; background: rgba(0,0,0,0.35); border: 1px solid rgba(0,248,255,0.1); color: #7dd3fc; font-size: 8px !important; line-height: 1.2 !important; font-family: JetBrains Mono, ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, monospace;'>\n{safe_log}\n</pre>
+        """
+        st.markdown(_card("CLI Output", "💻", body), unsafe_allow_html=True)
+    except Exception as e:
+        st.markdown(_card("CLI Output", "💻", f"<div style='color:#ff6b6b; font-size:12px;'>Error: {str(e)}</div>"), unsafe_allow_html=True)
+
+# Widget 3: Mood Analytics (pure HTML)
+with col3:
+    try:
+        df = get_audit_logs()
+        if df is None or getattr(df, 'empty', True):
+            body = "<div style='color: var(--text-dim); font-size:12px;'>No audit logs found</div>"
+        else:
+            if 'mood' in df.columns:
+                moods = df['mood'].dropna().astype(str)
+                tail = moods.tail(100)
+                counts = tail.value_counts().head(5)
+                current = (moods.iloc[-1] if len(moods) else "UNKNOWN")
+                bars = _mini_bar_svg(list(zip(counts.index.tolist(), counts.values.tolist())))
+                body = f"""
+                  <div style='display:flex; justify-content:space-between; align-items:center; margin-bottom: 10px;'>
+                    <span style='color: var(--text-dim); font-size:12px;'>Current State</span>
+                    <span style='font-family: Orbitron, sans-serif; color: var(--cyan); font-size:12px;'>{html.escape(str(current)).upper()}</span>
+                  </div>
+                  <div style='margin-top: 10px;'>{bars}</div>
+                """
+                # Enhanced Vega-Lite Mood History Graph
+                with st.expander("Mood History", expanded=False):
+                    mood_data = df.tail(100).copy()
+                    mood_data['timestamp'] = pd.to_datetime(mood_data['timestamp'])
+                    
+                    vega_spec = {
+                        "mark": {"type": "circle", "size": 60, "opacity": 0.8, "stroke": "white", "strokeWidth": 0.5},
+                        "encoding": {
+                            "x": {
+                                "field": "timestamp", 
+                                "type": "temporal", 
+                                "title": "Time",
+                                "axis": {"grid": True, "gridColor": "rgba(0,248,255,0.1)", "labelColor": "#a0a0a0", "titleColor": "#e0e0e0"}
+                            },
+                            "y": {
+                                "field": "mood", 
+                                "type": "nominal", 
+                                "title": "Mood",
+                                "sort": "ascending",
+                                "axis": {"grid": True, "gridColor": "rgba(0,248,255,0.1)", "labelColor": "#a0a0a0", "titleColor": "#e0e0e0"}
+                            },
+                            "color": {
+                                "field": "mood", 
+                                "type": "nominal", 
+                                "scale": {"scheme": "spectral"},
+                                "legend": None
+                            },
+                            "tooltip": [
+                                {"field": "timestamp", "type": "temporal", "title": "Time"},
+                                {"field": "mood", "type": "nominal", "title": "Mood"}
+                            ]
+                        },
+                        "config": {
+                            "background": "transparent",
+                            "view": {"stroke": "transparent"}
+                        },
+                        "height": 250
+                    }
+                    st.vega_lite_chart(mood_data, vega_spec, use_container_width=True)
+            else:
+                body = "<div style='color: var(--text-dim); font-size:12px;'>No mood column found</div>"
+        st.markdown(_card("Mood Analytics", "📈", body.strip()), unsafe_allow_html=True)
+    except Exception as e:
+        st.markdown(_card("Mood Analytics", "📈", f"<div style='color:#ff6b6b; font-size:12px;'>Error: {str(e)}</div>"), unsafe_allow_html=True)
+
+# Widget 4: Activity Volume (pure HTML)
+with col4:
+    try:
+        df = get_audit_logs()
+        total = 0
+        last_24h = None
+        hour_counts = []
+        if df is not None and not getattr(df, 'empty', True):
+            total = len(df)
+            if 'timestamp' in df.columns:
+                ts = pd.to_datetime(df['timestamp'], errors='coerce')
+                # Use UTC-aware or naive based on data, usually sqlite is naive
+                now = pd.Timestamp.now()
+                mask = ts > (now - pd.Timedelta(hours=24))
+                last_24h = int(mask.sum())
+                hrs = ts.dropna().dt.hour.value_counts().sort_index()
+                hour_counts = [(str(int(h)).zfill(2), int(v)) for h, v in hrs.tail(6).items()]
+        level = "LOW"
+        level_color = "#00f8ff"
+        if last_24h is not None:
+            if last_24h > 50:
+                level, level_color = "HIGH", "#ff4444"
+            elif last_24h > 20:
+                level, level_color = "MED", "#ffca28"
+        bars = _mini_bar_svg(hour_counts) if hour_counts else "<div style='color: var(--text-dim); font-size:12px;'>No timestamp data available</div>"
+        body = f"""
+          <div style='display:flex; flex-direction:column; gap:10px;'>
+            <div style='display:flex; justify-content:space-between;'><span style='color: var(--text-dim); font-size:12px;'>Total Activities</span><span style='font-family: Orbitron, sans-serif; color: var(--cyan);'>{total}</span></div>
+            <div style='display:flex; justify-content:space-between;'><span style='color: var(--text-dim); font-size:12px;'>Last 24h</span><span style='font-family: Orbitron, sans-serif; color: var(--cyan);'>{'' if last_24h is None else last_24h}</span></div>
+            <div style='font-size:10px; letter-spacing:1.5px; text-transform:uppercase; color: {level_color};'>Activity Level: {level}</div>
+            <div style='margin-top:4px;'>{bars}</div>
+          </div>
+        """
+        st.markdown(_card("Activity Volume", "📊", body), unsafe_allow_html=True)
+    except Exception as e:
+        st.markdown(_card("Activity Volume", "📊", f"<div style='color:#ff6b6b; font-size:12px;'>Error: {str(e)}</div>"), unsafe_allow_html=True)
 
 # --- COMMAND DECK ---
 st.divider()
