@@ -393,6 +393,17 @@ class CognitiveEngine:
         except Exception as e:
             return f"Error browsing {url}: {e}"
 
+    def sanitize_response(self, text):
+        """Removes ACTION blocks and tool tags for clean memory/history."""
+        if not text: return ""
+        # Remove ACTION:... blocks
+        text = re.sub(r'(?:\[|`+)?\s*ACTION:\s*\w+\(.*?\)\s*(?:\]|`+)?', '', text, flags=re.DOTALL | re.IGNORECASE)
+        # Remove "Used tool" tags
+        text = re.sub(r'📂 \*\*Used \w+\*\*\n?', '', text)
+        # Remove any leading/trailing tool headers from older versions
+        text = re.sub(r'^\[Tool Result:.*\]$', '', text, flags=re.MULTILINE | re.IGNORECASE)
+        return text.strip()
+
     async def execute_tool(self, fn_name, args, input_image_bytes=None):
         """Executes the mapped tool function."""
         try:
@@ -437,7 +448,7 @@ class CognitiveEngine:
         
         # Trigger words check (Whole words only)
         # Regex \b matches word boundaries
-        #if re.search(r'\b(noodle|brain|pasta)\b', message_text, re.IGNORECASE):
+        #if re.search(r'\b(tars|brain|bot)\b', message_text, re.IGNORECASE):
             #return True
             
         # Gatekeeper LLM Check
@@ -468,7 +479,7 @@ Directly addressed to Tars? YES/NO:<end_of_turn>
         t_start = time.time()
         
         # 1. GATHER DATA
-        vibe_str = await self.memory_engine.get_noodle_vibe(user_id)
+        vibe_str = await self.memory_engine.get_tars_vibe(user_id)
         user_facts = await self.memory_engine.get_facts(user_id, guild_id)
         t_gather = time.time()
         
@@ -582,11 +593,10 @@ Directly addressed to Tars? YES/NO:<end_of_turn>
                 # Execute
                 result = await self.execute_tool(fn_name, args, input_image_bytes)
                 
-                # Handle Image Result Special Case
+                # Special Cases
                 if fn_name == "generate_image" and isinstance(result, bytes):
                     generated_image = result
                 elif fn_name == "set_reminder" and reminder_callback:
-                    # Special callback handling
                     try:
                         mins = float(args.get("minutes", 0))
                         note = args.get("message", "Reminder")
@@ -594,8 +604,28 @@ Directly addressed to Tars? YES/NO:<end_of_turn>
                         asyncio.create_task(reminder_callback(mins, note))
                     except: pass
                 else:
-                    # Text result (append to response)
-                    response_text += f"\n\n📂 **{fn_name} Result:**\n{result}"
+                    # REFINED OUTPUT HANDLING: Notification + Reasoning Pass
+                    logging.info(f"🦾 Tool Result for {fn_name}. Generating final summary...")
+                    
+                    internal_messages = [
+                        {"role": "system", "content": system_prompt},
+                        {"role": "user", "content": message_payload},
+                        {"role": "assistant", "content": msg.content},
+                        {"role": "user", "content": f"TOOL RESULT for {fn_name}:\n{result}\n\nBased on this result, provide the final answer to the user. Do not include the tool command block."}
+                    ]
+                    
+                    try:
+                        final_completion = await self.ai_client.chat.completions.create(
+                            model=self.model_name,
+                            messages=internal_messages,
+                            temperature=0.7,
+                            max_tokens=settings.MAX_GENERATION
+                        )
+                        final_answer = final_completion.choices[0].message.content or ""
+                        response_text = f"📂 **Used {fn_name}**\n\n" + final_answer
+                    except Exception as e:
+                        logging.error(f"Reasoning error: {e}")
+                        response_text += f"\n\n📂 **{fn_name} Used**\n(Error summarizing: {e})"
             
             # Cleanup any leftover "ACTION:" lines if regex missed slightly
             response_text = re.sub(r'(?i)^ACTION:.*$', '', response_text, flags=re.MULTILINE)
@@ -606,15 +636,10 @@ Directly addressed to Tars? YES/NO:<end_of_turn>
             
         t_end = time.time()
         
-        # PRINT TIMING REPORT
-        print(f"\n⏱️ --- TIMING BREAKDOWN ---")
-        print(f"🔹 Data Gather: {t_gather - t_start:.3f}s")
-        print(f"🔹 RAG Search:  {t_rag - t_gather:.3f}s")
-        print(f"🔹 Prompt Build: {t_prompt - t_rag:.3f}s")
-        print(f"🔹 LLM Gen:     {t_end - t_prompt:.3f}s")
-        print(f"🔸 TOTAL BRAIN: {t_end - t_start:.3f}s\n")
-
-        return response_text, generated_image, system_prompt, rag_mems
+        # Final Cleanup for memory storage (sanitize)
+        clean_text_for_memory = self.sanitize_response(response_text)
+        
+        return response_text, generated_image, system_prompt, rag_mems, clean_text_for_memory
 
 
     async def process_interaction_stream(self, user_id, username, user_text, channel_id="DM", guild_id="DM", conversation_history=[], input_image_bytes=None, reminder_callback=None):
@@ -625,7 +650,7 @@ Directly addressed to Tars? YES/NO:<end_of_turn>
         t_start = time.time()
         
         # 1. GATHER (Same as before)
-        vibe_str = await self.memory_engine.get_noodle_vibe(user_id)
+        vibe_str = await self.memory_engine.get_tars_vibe(user_id)
         user_facts = await self.memory_engine.get_facts(user_id, guild_id)
         
         # 2. RETRIEVE (Same as before)
@@ -741,7 +766,35 @@ Directly addressed to Tars? YES/NO:<end_of_turn>
                         asyncio.create_task(reminder_callback(mins, note))
                     except: pass
                 else:
-                    yield ("text", f"\n[Tool Result: {result}]")
+                    # REFINED OUTPUT HANDLING: Notification + Streaming Reasoning
+                    yield ("text", f"\n\n📂 **Used {fn_name}**\n\n")
+                    
+                    internal_messages = [
+                        {"role": "system", "content": system_prompt},
+                        {"role": "user", "content": message_payload},
+                        {"role": "assistant", "content": self.sanitize_response(full_response_buffer)},
+                        {"role": "user", "content": f"TOOL RESULT for {fn_name}:\n{result}\n\nBased on this, provided the final answer."}
+                    ]
+                    
+                    try:
+                        reasoning_stream = await self.ai_client.chat.completions.create(
+                            model=self.model_name,
+                            messages=internal_messages,
+                            temperature=0.7,
+                            max_tokens=settings.MAX_GENERATION,
+                            stream=True
+                        )
+                        final_clean_buffer = ""
+                        async for r_chunk in reasoning_stream:
+                            if r_chunk.choices and r_chunk.choices[0].delta.content:
+                                r_token = r_chunk.choices[0].delta.content
+                                final_clean_buffer += r_token
+                                yield ("text", r_token)
+                        
+                        # Add final metadata for memory capture
+                        yield ("meta", {"clean_response": self.sanitize_response(full_response_buffer) + "\n" + final_clean_buffer})
+                    except Exception as e:
+                        yield ("text", f"\n(Error summarizing {fn_name}: {e})")
 
         except Exception as e:
             logging.error(f"Stream Error: {e}")

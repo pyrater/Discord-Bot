@@ -9,6 +9,7 @@ from datetime import datetime
 from collections import deque
 from functools import lru_cache as from_functools_import_lru_cache
 import contextlib
+import shutil
 
 class MemoryEngine:
     def __init__(self, db_path=None, chroma_path=None):
@@ -49,7 +50,7 @@ class MemoryEngine:
         except Exception as e:
             logging.warning(f"⚠️ Memory Warmup failed (non-critical): {e}")
 
-    async def get_noodle_vibe(self, user_id):
+    async def get_tars_vibe(self, user_id):
         def _fetch():
             with self._get_connection(use_row_factory=True) as conn:
                 row = conn.execute("SELECT * FROM emotional_state WHERE user_id = ?", (str(user_id),)).fetchone()
@@ -105,17 +106,34 @@ class MemoryEngine:
             await loop.run_in_executor(None, _wipe_sql_global)
             
             # 2. Chroma Wipe
-            # Deleting and recreating is cleaner than deleting items
-            for col_name in ["user_memories", "tars_knowledge", "conversation_summaries"]:
-                try:
-                    self.chroma_client.delete_collection(col_name)
-                except Exception as e:
-                    logging.warning(f"Note: Could not delete collection {col_name} (already gone?): {e}")
-            
-            # Recreate
-            self.collection = self.chroma_client.get_or_create_collection(name="user_memories")
-            self.knowledge_collection = self.chroma_client.get_or_create_collection(name="tars_knowledge")
-            self.summary_collection = self.chroma_client.get_or_create_collection(name="conversation_summaries")
+            # We physically delete the directory to ensure no stale SQLite/WAL files remain
+            try:
+                # Reset references to prevent using closed DB
+                self.collection = None
+                self.knowledge_collection = None
+                self.summary_collection = None
+                
+                if os.path.exists(self.chroma_path):
+                    logging.warning(f"🧹 Memory Engine: Physically removing {self.chroma_path}...")
+                    # Note: On Windows, this might fail if a process still holds a lock.
+                    # We try it, and if it fails, we fall back to collection-based wipe.
+                    shutil.rmtree(self.chroma_path, ignore_errors=True)
+                
+                # Re-initialize client and collections
+                self.chroma_client = chromadb.PersistentClient(path=self.chroma_path)
+                self.collection = self.chroma_client.get_or_create_collection(name="user_memories")
+                self.knowledge_collection = self.chroma_client.get_or_create_collection(name="tars_knowledge")
+                self.summary_collection = self.chroma_client.get_or_create_collection(name="conversation_summaries")
+            except Exception as e:
+                logging.error(f"⚠️ Chroma physical wipe failed, falling back to logical wipe: {e}")
+                for col_name in ["user_memories", "tars_knowledge", "conversation_summaries"]:
+                    try:
+                        self.chroma_client.delete_collection(col_name)
+                    except: pass
+                # Still need to recreate them if they were deleted
+                self.collection = self.chroma_client.get_or_create_collection(name="user_memories")
+                self.knowledge_collection = self.chroma_client.get_or_create_collection(name="tars_knowledge")
+                self.summary_collection = self.chroma_client.get_or_create_collection(name="conversation_summaries")
             
             logging.warning("⚠️ CRITICAL: MEMORY ENGINE GLOBALLY WIPED")
             return True
@@ -130,9 +148,20 @@ class MemoryEngine:
                 with self._get_connection() as conn:
                     # 1. Update Emotional State
                     conn.execute("INSERT OR IGNORE INTO emotional_state (user_id) VALUES (?)", (str(user_id),))
+                    
+                    # Define allowed labels for validation
+                    allowed_labels = {
+                        "admiration", "amusement", "anger", "annoyance", "approval", "caring", 
+                        "confusion", "curiosity", "desire", "disappointment", "disapproval", 
+                        "disgust", "embarrassment", "excitement", "fear", "gratitude", "grief", 
+                        "joy", "love", "nervousness", "optimism", "pride", "realization", 
+                        "relief", "remorse", "sadness", "surprise", "neutral"
+                    }
+                    
                     for res in emo_results:
                         label, score = res['label'], res['score']
-                        conn.execute(f"UPDATE emotional_state SET {label} = ({label} * 0.7) + ? WHERE user_id = ?", (score * 0.3, str(user_id)))
+                        if label in allowed_labels:
+                            conn.execute(f"UPDATE emotional_state SET {label} = ({label} * 0.7) + ? WHERE user_id = ?", (score * 0.3, str(user_id)))
                     
                     # 2. Append to Audit Log
                     memories_json = json.dumps(memories) if isinstance(memories, list) else str(memories)
@@ -151,9 +180,27 @@ class MemoryEngine:
         loop = asyncio.get_event_loop()
         return await loop.run_in_executor(None, _write)
 
-        # Background Queue for Fact Extraction to avoid concurrency limits
-        self.fact_queue = asyncio.Queue()
-        # Task must be started explicitly when loop is running
+    async def store_interaction(self, user_id, username, prompt, response, guild_id="DM", channel_id="DM", llm_client=None, model_name=None, emo_results=None, full_prompt="[Combined Context]", memories="[]"):
+        """High-level method to persist everything about an interaction."""
+        # 1. Log to SQLite
+        mood = emo_results[0]['label'] if emo_results else "neutral"
+        
+        await self.log_interaction(
+            user_id=user_id,
+            prompt=prompt,
+            response=response,
+            mood=mood,
+            full_prompt=full_prompt,
+            memories=memories,
+            emo_results=emo_results or []
+        )
+        
+        # 2. Store in ChromaDB
+        self.store_memory(user_id, username, prompt, response, guild_id, channel_id, emotion=mood)
+        
+        # 3. Queue Fact Extraction
+        if llm_client and model_name:
+            await self.queue_fact_extraction(user_id, username, prompt, llm_client, model_name, guild_id)
     
     async def start(self):
         """Starts background workers."""

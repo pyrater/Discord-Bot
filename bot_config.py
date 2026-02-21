@@ -21,7 +21,8 @@ class Config:
         self.LOCAL_MODEL_PATH = os.getenv("LOCAL_MODEL_PATH", "/app/models/google_gemma-3-270m-it-Q8_0.gguf")
         self.BASE_DIR = base_dir
         self.DB_PATH = os.path.join(base_dir, "tars_state.db")
-        self.CHROMA_PATH = os.path.join(base_dir, "chroma_db")
+        self.PERSONA_PATH = os.path.join(base_dir, "chars", "TARS.json")
+        self.ART_FILENAME = "tars_art.png"
         self.LOG_FILE = os.path.join(base_dir, "bot.log")
         
         # Token Limits

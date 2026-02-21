@@ -113,62 +113,59 @@ class ConversationManager:
                 cog = self.bot.get_cog("Reminders")
                 if cog:
                     await cog.create_reminder(user_id, channel_id, minutes, note)
-                else:
-                    # Fallback to ephemeral if cog fails to load
-                    async def _wait_and_send() -> None:
-                        await asyncio.sleep(minutes * 60)
-                        if channel and hasattr(channel, 'send'):
-                             await channel.send(f"⏰ **REMINDER:** {user.mention} - {note}")
-                    asyncio.create_task(_wait_and_send())
 
-            # 4. STREAMING BRAIN CALL
-            # Initialize AudioQueue if needed
-            audio_queue: Optional[AudioQueue] = None
-            if (is_voice or (guild and guild.voice_client and guild.voice_client.is_connected())) and guild:
-                audio_queue = AudioQueue(guild.voice_client)
-
+            # 4. Stream Results
             full_response_text = ""
             sentence_buffer = ""
             system_prompt = "Streamed"
             interaction_memories = []
+            audio_queue = None
             
-            # Consume Generator
+            if is_voice and guild.voice_client:
+                audio_queue = AudioQueue(guild.voice_client)
+
             async for kind, data in self.brain.process_interaction_stream(
                 user_id=user_id,
                 username=username,
                 user_text=user_text,
                 channel_id=channel_id,
                 guild_id=guild_id,
-                conversation_history=short_term,
+                conversation_history=self.conversation_history.get(channel_id, []),
                 input_image_bytes=input_image_bytes,
                 reminder_callback=schedule_reminder
             ):
                 if kind == "meta":
                     system_prompt = data.get("system_prompt", "Streamed")
                     interaction_memories = data.get("memories", [])
+                    if "clean_response" in data:
+                        # Overwrite the raw accumulation with the purified version
+                        full_response_text = data["clean_response"]
                 
                 elif kind == "text":
                     token = str(data)
                     full_response_text += token
                     sentence_buffer += token
                     
-                    # Check for sentence boundary
-                    if re.search(r'[.!?\n]\s*$', sentence_buffer):
-                        to_speak = sentence_buffer.strip()
-                        sentence_buffer = ""
-                        
-                        if to_speak and audio_queue:
-                             logging.info(f"🗣️ Queueing Sentence: {repr(to_speak[:30])}...")
-                             clean_text = re.sub(r'http\S+|```.*?```|`.*?`|[*_>~]', '', to_speak).strip()
-                             if clean_text:
-                                 stream = await asyncio.to_thread(self.voice_engine.synthesize, clean_text)
-                                 if stream:
-                                     tmp_path, cleanup_fn = AudioManager.create_async_audio_file(stream.read())
-                                     await audio_queue.add(discord.FFmpegPCMAudio(tmp_path, executable=self.ffmpeg_path), cleanup_fn)
-                
+                    # Check for sentence boundary for voice
+                    if is_voice and audio_queue:
+                         if any(token.endswith(p) for p in [".", "?", "!", "\n"]):
+                               to_speak = sentence_buffer.strip()
+                               clean_text = re.sub(r'http\S+|```.*?```|`.*?`|[*_>~]', '', to_speak).strip()
+                               if clean_text:
+                                    # Synthesize and add to queue
+                                    stream = await asyncio.to_thread(self.voice_engine.synthesize, clean_text)
+                                    if stream:
+                                        tmp_path, cleanup_fn = AudioManager.create_async_audio_file(stream.read())
+                                        await audio_queue.add(discord.FFmpegPCMAudio(tmp_path, executable=self.ffmpeg_path), cleanup_fn)
+                               sentence_buffer = ""
+
+                    # Send to Discord (Regular Text)
+                    # Note: For non-voice we'd ideally buffer for rate limits, but for now we rely on the bot's chunking
+                    pass
+
                 elif kind == "image":
                     if hasattr(channel, 'send') and isinstance(data, bytes):
-                         await channel.send(file=discord.File(io.BytesIO(data), filename="noodle_art.png"))
+                         await channel.send(file=discord.File(io.BytesIO(data), filename=settings.ART_FILENAME))
                 
             # 5. Final Flush
             if full_response_text:
@@ -195,28 +192,51 @@ class ConversationManager:
 
             # 6. Update History
             if full_response_text:
-                 short_term.append(f"{username}: {user_text}")
-                 short_term.append(f"Tars: {full_response_text}")
-                 if len(short_term) > 20: 
-                     self.conversation_history[channel_id] = short_term[-20:]
-                     
-                 # Persist
-                 asyncio.create_task(self._persist_interaction(
-                    user_id=user_id,
-                    username=username,
-                    prompt=user_text,
-                    response=full_response_text,
-                    guild_id=guild_id,
-                    channel_id=channel_id,
-                    full_prompt=system_prompt,
-                    memories=interaction_memories 
-                 ))
-                 
-                 # Recency
-                 self.last_bot_message_time[channel_id] = datetime.now()
+                # Use sanitized version for history/persistence if possible
+                clean_response = getattr(self.brain, 'sanitize_response', lambda x: x)(full_response_text)
+                short_term.append(f"{username}: {user_text}")
+                short_term.append(f"Tars: {clean_response}")
+                if len(short_term) > 20: 
+                    self.conversation_history[channel_id] = short_term[-20:]
+                    
+                # Persist
+                asyncio.create_task(self._persist_interaction(
+                   user_id=user_id,
+                   username=username,
+                   prompt=user_text,
+                   response=clean_response,
+                   guild_id=guild_id,
+                   channel_id=channel_id,
+                   full_prompt=system_prompt,
+                   memories=interaction_memories 
+                ))
+                
+                # Recency
+                self.last_bot_message_time[channel_id] = datetime.now()
 
         except Exception as e:
             logging.error(f"Handle Interaction Error: {e}")
+
+    async def _persist_interaction(self, user_id, username, prompt, response, guild_id, channel_id, full_prompt, memories):
+        """Persists the interaction to the database and vector store."""
+        try:
+            # 1. Extract and store facts from THIS response
+            # (Ensuring memories retrieved previously are also linked)
+            await self.memory_engine.store_interaction(
+                user_id=user_id,
+                username=username,
+                prompt=prompt,
+                response=response,
+                guild_id=guild_id,
+                channel_id=channel_id,
+                llm_client=self.ai_client,
+                model_name=self.brain.model_name,
+                full_prompt=full_prompt,
+                memories=memories
+            )
+            logging.info(f"✅ Interaction persisted for {username}")
+        except Exception as e:
+            logging.error(f"Persistence Error: {e}")
 
     async def passive_listen(self, user, user_text, channel, guild):
         """
@@ -228,89 +248,13 @@ class ConversationManager:
              user_id = str(user.id)
              
              # Store in ChromaDB as an 'observation'
-             # Run in executor to avoid blocking main loop with DB writes
-             loop = asyncio.get_event_loop()
-             await loop.run_in_executor(
-                 None, 
-                 lambda: self.memory_engine.store_observation(user_id, user.display_name, user_text, guild_id, channel_id)
+             await self.memory_engine.store_interaction(
+                user_id=user_id,
+                username=user.display_name,
+                prompt=user_text,
+                response=None, # Observation only
+                guild_id=guild_id,
+                channel_id=channel_id
              )
-
-             # Queue fact extraction for observations too
-             await self.memory_engine.queue_fact_extraction(
-                 user_id, 
-                 user.display_name, 
-                 user_text, 
-                 self.ai_client, 
-                 settings.MODEL_NAME,
-                 guild_id
-             )
-
-             guild_name = guild.name if guild else "DM"
-             logging.info(f"💾 [{guild_name}] {user.display_name} (Observed): {user_text}")
-             
         except Exception as e:
             logging.error(f"Passive Listen Error: {e}")
-
-    async def _persist_interaction(self, user_id: str, username: str, prompt: str, response: str, guild_id: str, channel_id: str, full_prompt: str = "", memories: Union[List[str], str] = "") -> None:
-        """
-        Saves the interaction to the database and ChromaDB with location metadata.
-        """
-        try:
-            logging.info(f"💾 Background task started for {username}")
-            
-            primary_emo = "neutral"
-            emo_results = []
-            try:
-                 loop = asyncio.get_event_loop()
-                 # Use self.emotion_classifier
-                 if self.emotion_classifier:
-                    emo_results = await loop.run_in_executor(None, lambda: self.emotion_classifier(response)[0])
-                    top_score = 0
-                    for res in emo_results:
-                        if res['score'] > top_score:
-                            primary_emo, top_score = res['label'], res['score']
-            except Exception: pass
-
-            async def save_sqlite() -> None:
-                success = await self.memory_engine.log_interaction(
-                    user_id=str(user_id),
-                    prompt=prompt,
-                    response=response,
-                    mood=primary_emo,
-                    full_prompt=full_prompt,
-                    memories=memories,
-                    emo_results=emo_results
-                )
-                if success:
-                    logging.info(f"✅ SQLite saved for {username}")
-
-            async def save_chroma() -> None:
-                try:
-                    self.memory_engine.store_memory(
-                        user_id=str(user_id),
-                        username=username,
-                        prompt=prompt,
-                        response=response,
-                        guild_id=guild_id,
-                        channel_id=channel_id,
-                        emotion=primary_emo
-                    )
-                    
-                    # Check for facts (Background Queue)
-                    await self.memory_engine.queue_fact_extraction(
-                        str(user_id), 
-                        username,
-                        prompt, 
-                        self.ai_client, 
-                        settings.MODEL_NAME,
-                        guild_id
-                    )
-                    
-                    logging.info(f"✅ ChromaDB and Fact Extraction queued for {username}")
-                except Exception as e:
-                    logging.error(f"background_tasks_chroma Error: {e}")
-
-            await asyncio.gather(save_sqlite(), save_chroma())
-            logging.info(f"✅ Background tasks completed for {username}")
-        except Exception as e:
-            logging.error(f"❌ Background Task Error: {e}")

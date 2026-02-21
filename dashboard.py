@@ -1528,10 +1528,10 @@ with tab_conf:
     st.subheader("⚙️ System Configuration")
     
     st.write("**TARS Persona UI**")
-    nb_json_path = os.path.join(BASE_DIR, "TARS.json")
-    if os.path.exists(nb_json_path):
+    tars_json_path = os.path.join(BASE_DIR, "chars", "TARS.json")
+    if os.path.exists(tars_json_path):
         try:
-            with open(nb_json_path, "r", encoding="utf-8") as f:
+            with open(tars_json_path, "r", encoding="utf-8") as f:
                 data = json.load(f)
             
             with st.form("persona_form"):
@@ -1546,7 +1546,7 @@ with tab_conf:
                     data["world_scenario"] = new_scenario
                     data["example_dialogue"] = new_examples
                     
-                    with open(nb_json_path, "w", encoding="utf-8") as f:
+                    with open(tars_json_path, "w", encoding="utf-8") as f:
                         json.dump(data, f, indent=4, ensure_ascii=False)
                     st.success("Persona updated via Form!")
         except Exception as e:
