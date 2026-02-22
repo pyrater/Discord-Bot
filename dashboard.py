@@ -49,6 +49,11 @@ GLOBAL_CSS = """
     --neon-blue: #00f0ff;
     --neon-purple: #9d46ff;
     --neon-red: #ff4444;
+
+    /* Bottom widget aliases (referenced by _card / _mini_bar_svg) */
+    --text: #e0e0e0;
+    --text-dim: #a0a0a0;
+    --cyan: #00f0ff;
 }
 
 /* GLOBAL RESET & BACKGROUND */
@@ -285,6 +290,127 @@ div[data-testid="stButton"] button:contains("SHUTDOWN"):hover {
     overflow-y: auto !important;
     white-space: pre-wrap !important;
     word-break: break-all !important;
+}
+
+/* --- RESPONSIVE: TABLET (≤1024px) --- */
+@media (max-width: 1024px) {
+    .block-container {
+        max-width: 100% !important;
+        padding-left: 1rem !important;
+        padding-right: 1rem !important;
+    }
+    .nexus-hud {
+        padding: 12px 18px;
+    }
+    .hud-group {
+        gap: 20px;
+    }
+    .hud-value {
+        font-size: 15px;
+    }
+    [data-testid="stMetricValue"] {
+        font-size: 26px !important;
+    }
+}
+
+/* --- RESPONSIVE: PHONE (≤768px) --- */
+@media (max-width: 768px) {
+    .block-container {
+        padding-left: 0.5rem !important;
+        padding-right: 0.5rem !important;
+        padding-top: 0.5rem !important;
+    }
+    /* HUD: stack vertically */
+    .nexus-hud {
+        flex-direction: column;
+        gap: 12px;
+        padding: 10px 12px;
+        align-items: flex-start;
+        margin-bottom: 20px;
+    }
+    .hud-group {
+        flex-wrap: wrap;
+        gap: 12px;
+        width: 100%;
+    }
+    .hud-item {
+        padding-left: 8px;
+        flex: 1 1 40%;
+        min-width: 0;
+    }
+    .hud-title {
+        font-size: 18px !important;
+        letter-spacing: 2px !important;
+    }
+    .hud-value {
+        font-size: 14px;
+    }
+    .hud-label {
+        font-size: 9px;
+    }
+    /* TABS: horizontal scroll instead of wrapping */
+    .stTabs [data-baseweb="tab-list"] {
+        gap: 2px;
+        overflow-x: auto;
+        flex-wrap: nowrap;
+        -webkit-overflow-scrolling: touch;
+        scrollbar-width: none;
+        padding-bottom: 4px;
+    }
+    .stTabs [data-baseweb="tab-list"]::-webkit-scrollbar {
+        display: none;
+    }
+    .stTabs [data-baseweb="tab"] {
+        font-size: 11px;
+        padding: 8px 8px;
+        white-space: nowrap;
+        flex-shrink: 0;
+    }
+    /* METRICS */
+    [data-testid="stMetricValue"] {
+        font-size: 20px !important;
+    }
+    /* CARDS */
+    .tech-card, div[data-testid="stMetric"], div[data-testid="stExpander"] {
+        padding: 12px !important;
+        border-radius: 8px !important;
+        margin-bottom: 12px;
+    }
+    .tech-card:hover, div[data-testid="stMetric"]:hover {
+        transform: none;
+    }
+    /* BUTTONS */
+    div.stButton > button {
+        padding: 10px 14px !important;
+        font-size: 10px !important;
+        letter-spacing: 1px !important;
+    }
+    /* DEBUG */
+    .debug-box {
+        font-size: 8px !important;
+        max-height: 150px !important;
+    }
+    /* INPUTS */
+    .stTextInput input, .stTextArea textarea {
+        font-size: 13px !important;
+    }
+}
+
+/* --- RESPONSIVE: SMALL PHONE (≤480px) --- */
+@media (max-width: 480px) {
+    .hud-title {
+        font-size: 15px !important;
+    }
+    .hud-item {
+        flex: 1 1 100%;
+    }
+    .stTabs [data-baseweb="tab"] {
+        font-size: 10px;
+        padding: 6px 6px;
+    }
+    [data-testid="stMetricValue"] {
+        font-size: 18px !important;
+    }
 }
 
 </style>
@@ -869,7 +995,7 @@ with tab_brain_explorer: # Renamed from tab_brain_explorer to tab_brain in instr
         links_json = "[]"
 
     BRAIN_EXPLORER_CODE = f"""
-    <div id="brain-viz-container" style="width:100%; height:900px; background:transparent; position:relative; overflow:hidden;">
+    <div id="brain-viz-container" style="width:100%; height:min(900px, 80vh); background:transparent; position:relative; overflow:hidden;">
         <svg id="brain-viz" style="width:100%; height:100%; cursor:move;"></svg>
         
         <div id="brain-search-container" style="position:absolute; top:20px; left:20px; z-index:100; display:flex; gap:10px;">
@@ -878,7 +1004,7 @@ with tab_brain_explorer: # Renamed from tab_brain_explorer to tab_brain in instr
             <button id="toggle-3d" style="background: rgba(15,15,15,0.85); border: 1px solid #444; color:#aaa; padding:10px; border-radius:6px; cursor:pointer;" onclick="window.toggle3D()">[3D MODE]</button>
         </div>
 
-        <div id="brain-details" style="position:absolute; top:20px; right:20px; width:300px; background: rgba(10,10,10,0.95); border: 1px solid rgba(0,248,255,0.3); padding:15px; border-radius:10px; font-family: monospace; font-size:11px; backdrop-filter:blur(15px); z-index:100; box-shadow: 0 10px 40px rgba(0,0,0,0.8); transition: all 0.3s;">
+        <div id="brain-details" style="position:absolute; top:20px; right:20px; width:300px; max-width:90vw; background: rgba(10,10,10,0.95); border: 1px solid rgba(0,248,255,0.3); padding:15px; border-radius:10px; font-family: monospace; font-size:11px; backdrop-filter:blur(15px); z-index:100; box-shadow: 0 10px 40px rgba(0,0,0,0.8); transition: all 0.3s;">
             <div style="color:#7dd3fc; font-weight:bold; border-bottom:1px solid #333; padding-bottom:8px; margin-bottom:10px; letter-spacing:1px; display:flex; justify-content:space-between;">
                 <span>NEURAL TELEMETRY</span>
                 <span id="close-details" style="cursor:pointer; color:#777; font-size:14px;" onclick="document.getElementById('brain-details').style.display='none'">×</span>
@@ -935,6 +1061,29 @@ with tab_brain_explorer: # Renamed from tab_brain_explorer to tab_brain in instr
             @keyframes nexus-ripple {{
                 0% {{ r: 10; opacity: 1; }}
                 100% {{ r: 120; opacity: 0; }}
+            }}
+
+            /* Responsive Brain Explorer */
+            @media (max-width: 768px) {{
+                #brain-viz-container {{
+                    height: 400px !important;
+                }}
+                #brain-details {{
+                    position: relative !important;
+                    top: auto !important;
+                    right: auto !important;
+                    width: 100% !important;
+                    max-width: 100% !important;
+                    margin-top: 10px;
+                    border-radius: 8px !important;
+                }}
+                #brain-search-container {{
+                    flex-direction: column;
+                    gap: 5px;
+                }}
+                #brain-search-container input {{
+                    width: 100% !important;
+                }}
             }}
         </style>
     </div>
@@ -1128,7 +1277,7 @@ with tab_brain_explorer: # Renamed from tab_brain_explorer to tab_brain in instr
     }})();
     </script>
     """
-    st.components.v1.html(BRAIN_EXPLORER_CODE, height=900)
+    st.components.v1.html(BRAIN_EXPLORER_CODE, height=950)
 
 # TAB 3: RAG MEMORY BROWSER
 with tab_mem:
@@ -1611,11 +1760,11 @@ def _mood_timeline_svg(df):
     # use a simple sparkline-style SVG if matplotlib was the bottleneck.
     return "<!-- Interactive Timeline Placeholder -->"
 
-# Create horizontal layout using Streamlit columns
-col1, col2, col3, col4 = st.columns(4)
+# Create 2x2 grid layout for bottom widgets (Row 1)
+bw_col1, bw_col2 = st.columns(2)
 
 # Widget 1: Knowledge Graph (pure HTML)
-with col1:
+with bw_col1:
     try:
         fact_count = entity_count = relation_count = 0
         if os.path.exists(DB_PATH):
@@ -1647,7 +1796,7 @@ with col1:
         st.markdown(_card("Knowledge Graph", "🧠", f"<div style='color:#ff6b6b; font-size:12px;'>Error: {str(e)}</div>"), unsafe_allow_html=True)
 
 # Widget 2: CLI Output (pure HTML)
-with col2:
+with bw_col2:
     try:
         log_output = ""
         if os.path.exists(LOG_FILE):
@@ -1663,8 +1812,11 @@ with col2:
     except Exception as e:
         st.markdown(_card("CLI Output", "💻", f"<div style='color:#ff6b6b; font-size:12px;'>Error: {str(e)}</div>"), unsafe_allow_html=True)
 
+# Bottom widgets Row 2
+bw_col3, bw_col4 = st.columns(2)
+
 # Widget 3: Mood Analytics (pure HTML)
-with col3:
+with bw_col3:
     try:
         df = get_audit_logs()
         if df is None or getattr(df, 'empty', True):
@@ -1729,7 +1881,7 @@ with col3:
         st.markdown(_card("Mood Analytics", "📈", f"<div style='color:#ff6b6b; font-size:12px;'>Error: {str(e)}</div>"), unsafe_allow_html=True)
 
 # Widget 4: Activity Volume (pure HTML)
-with col4:
+with bw_col4:
     try:
         df = get_audit_logs()
         total = 0

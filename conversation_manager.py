@@ -198,6 +198,13 @@ class ConversationManager:
                 short_term.append(f"Tars: {clean_response}")
                 if len(short_term) > 20: 
                     self.conversation_history[channel_id] = short_term[-20:]
+                
+                # Run emotion classifier on user text
+                emo_results = []
+                try:
+                    emo_results = self.emotion_classifier(user_text[:512])[0]  # Truncate for model limit
+                except Exception as e:
+                    logging.warning(f"Emotion classification failed: {e}")
                     
                 # Persist
                 asyncio.create_task(self._persist_interaction(
@@ -208,7 +215,8 @@ class ConversationManager:
                    guild_id=guild_id,
                    channel_id=channel_id,
                    full_prompt=system_prompt,
-                   memories=interaction_memories 
+                   memories=interaction_memories,
+                   emo_results=emo_results
                 ))
                 
                 # Recency
@@ -217,7 +225,7 @@ class ConversationManager:
         except Exception as e:
             logging.error(f"Handle Interaction Error: {e}")
 
-    async def _persist_interaction(self, user_id, username, prompt, response, guild_id, channel_id, full_prompt, memories):
+    async def _persist_interaction(self, user_id, username, prompt, response, guild_id, channel_id, full_prompt, memories, emo_results=None):
         """Persists the interaction to the database and vector store."""
         try:
             # 1. Extract and store facts from THIS response
@@ -231,6 +239,7 @@ class ConversationManager:
                 channel_id=channel_id,
                 llm_client=self.ai_client,
                 model_name=self.brain.model_name,
+                emo_results=emo_results,
                 full_prompt=full_prompt,
                 memories=memories
             )
@@ -241,18 +250,18 @@ class ConversationManager:
     async def passive_listen(self, user, user_text, channel, guild):
         """
         Logs a user message to memory without responding.
+        Only stores the prompt in ChromaDB (no response to avoid polluting RAG).
         """
         try:
              guild_id = str(guild.id) if guild else "DM"
              channel_id = str(channel.id) if hasattr(channel, 'id') else "DM"
              user_id = str(user.id)
              
-             # Store in ChromaDB as an 'observation'
-             await self.memory_engine.store_interaction(
+             # Store observation in ChromaDB (prompt only, no response)
+             self.memory_engine.store_observation(
                 user_id=user_id,
                 username=user.display_name,
-                prompt=user_text,
-                response=None, # Observation only
+                text=user_text,
                 guild_id=guild_id,
                 channel_id=channel_id
              )

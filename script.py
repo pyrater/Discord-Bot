@@ -142,7 +142,7 @@ conversation_manager = ConversationManager(
 # Construct base path for robust file loading
 BASE_DIR = os.path.dirname(os.path.abspath(__file__))
 # UPDATED: Point to TARS.json
-CHAR_FILE = os.path.join(BASE_DIR, "TARS.json")
+CHAR_FILE = os.path.join(BASE_DIR, "chars", "TARS.json")
 
 with open(CHAR_FILE, "r", encoding="utf-8") as f:
     char_data = json.load(f)

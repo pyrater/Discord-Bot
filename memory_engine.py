@@ -7,7 +7,7 @@ import tiktoken
 import asyncio
 from datetime import datetime
 from collections import deque
-from functools import lru_cache as from_functools_import_lru_cache
+from functools import lru_cache
 import contextlib
 import shutil
 
@@ -277,7 +277,7 @@ class MemoryEngine:
             self._enc = tiktoken.get_encoding("cl100k_base")
         return self._enc
 
-    @from_functools_import_lru_cache
+    @lru_cache
     def count_tokens(self, text):
         return len(self._encoding.encode(text))
     async def _process_fact_queue(self):
@@ -404,6 +404,8 @@ class MemoryEngine:
 
     def store_memory(self, user_id, username, prompt, response, guild_id="DM", channel_id="DM", emotion="neutral"):
         """Stores interaction in ChromaDB."""
+        if response is None:
+            return  # Skip storing incomplete interactions (passive observations)
         # Use a more unique ID to prevent collisions during rapid interaction
         mem_id = f"mem_{datetime.now().timestamp()}_{user_id}"
         self.collection.add(
@@ -419,20 +421,21 @@ class MemoryEngine:
         )
 
     def store_observation(self, user_id, username, text, guild_id="DM", channel_id="DM"):
-        """Stores a passive observation (user message without bot reply)."""
-        # Use a more unique ID to prevent collisions
+        """Stores a passive observation (user message without bot response) in ChromaDB.
+        Uses a separate document format to avoid polluting RAG with 'Tars replied: None'."""
         obs_id = f"obs_{datetime.now().timestamp()}_{user_id}"
         self.collection.add(
-            documents=[f"{username} observed: {text}"],
+            documents=[f"[Observed] {username} said: {text}"],
             ids=[obs_id],
             metadatas=[{
                 "user_id": str(user_id),
                 "username": str(username),
-                "type": "observation",
+                "emotion": "observed",
                 "guild_id": str(guild_id),
                 "channel_id": str(channel_id)
             }]
         )
+
 
     def store_knowledge(self, text, source, title):
         """Stores technical knowledge in the knowledge base."""
