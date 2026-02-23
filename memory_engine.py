@@ -306,12 +306,31 @@ class MemoryEngine:
         """
         logging.info(f"🔎 Memory Engine: Extracting facts from: '{user_text[:50]}...'")
         extraction_prompt = f"""
-        Extract permanent facts from this message. 
+        Extract permanent, high-value facts about {username} from this message. 
+        A 'permanent fact' is a long-term detail like a preference, a personal attribute, a recurring habit, or a stable relationship.
+
+        DO NOT extract:
+        - Transient actions ("I am doing X right now")
+        - One-off requests ("Search for Y", "Send a message to Z")
+        - Bot commands or tool usage ("ACTION: ...")
+        - Temporary emotions or states ("I'm hungry", "I'm bored")
+        - Conversational filler
+
         Format as a JSON list of objects with keys: "subject", "predicate", "object", "overwrite".
         Self-reference (I, my) should be normalized to "{username}".
         "overwrite": boolean. Set to true ONLY if this fact explicitly corrects or updates a previous fact (e.g., "My name is actually...").
         If no facts, return empty list [].
-        
+
+        Examples to IGNORE:
+        - "TARS, search for cat videos" -> []
+        - "I'm eating a sandwich" -> []
+        - "Can you remind me in 5 minutes?" -> []
+
+        Examples to EXTRACT:
+        - "I really love spicy food" -> [{{"subject": "{username}", "predicate": "likes", "object": "spicy food", "overwrite": false}}]
+        - "My birthday is June 5th" -> [{{"subject": "{username}", "predicate": "birthday", "object": "June 5th", "overwrite": false}}]
+        - "I'm actually a software engineer" -> [{{"subject": "{username}", "predicate": "occupation", "object": "software engineer", "overwrite": true}}]
+
         Message: "{user_text}"
         Facts JSON:
         """
