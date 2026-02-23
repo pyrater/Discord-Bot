@@ -850,6 +850,9 @@
         <!-- PAGE 0: BRAIN EXPLORER -->
         <div class="page" id="page-0">
           <div id="brain-canvas-wrap" style="position:relative;">
+            <input type="text" id="node-search" placeholder="Search nodes..."
+              style="position:absolute; top:8px; left:8px; z-index:20; background:rgba(15,15,15,0.85); border:1px solid rgba(88,166,255,0.4); border-radius:4px; padding:6px 10px; color:#fff; font-family:monospace; font-size:10px; width:150px; outline:none;"
+              onkeyup="searchNodes(this.value)">
             <svg id="cog-map-svg" style="width:calc(100% - 30px);height:100%;background:transparent;"></svg>
             <div
               style="position:absolute;right:2px;top:10px;bottom:30px;width:24px;display:flex;flex-direction:column;align-items:center;gap:4px;z-index:10;">
@@ -857,7 +860,7 @@
                 style="font-size:7px;color:var(--cyan);font-family:'Share Tech Mono',monospace;writing-mode:vertical-rl;transform:rotate(180deg);white-space:nowrap;margin-bottom:2px;">500
                 NODES</span>
               <input type="range" id="node-slider" min="10" max="100" value="50" orient="vertical"
-                style="writing-mode:bt-lr;-webkit-appearance:slider-vertical;width:18px;flex:1;accent-color:var(--cyan);cursor:pointer;"
+                style="writing-mode:bt-lr;-webkit-appearance:slider-vertical;appearance:slider-vertical;width:18px;flex:1;accent-color:var(--cyan);cursor:pointer;"
                 oninput="updateCogMap(this.value)">
               <span style="font-size:6px;color:var(--text-dim);font-family:'Share Tech Mono',monospace;">ALL</span>
             </div>
@@ -868,7 +871,12 @@
             <div class="widget-title">NEURAL TELEMETRY</div>
             <div class="tel-row">
               <span class="tel-key">TARGET</span>
-              <span id="node-target" class="tel-val">STANDBY</span>
+              <span class="tel-val" style="display:flex;align-items:center;gap:5px;">
+                <span id="node-target">STANDBY</span>
+                <button id="node-del-btn"
+                  style="display:none;background:rgba(248,81,73,0.15);border:1px solid #f85149;color:#f85149;border-radius:3px;font-size:8px;padding:2px 4px;cursor:pointer;"
+                  onclick="deleteSelectedNode()">🗑️ DEL</button>
+              </span>
             </div>
             <div class="tel-row">
               <span class="tel-key">METADATA</span>
@@ -902,11 +910,12 @@
             </div>
             <div class="stat-card" style="padding: 8px;">
               <div class="stat-card-label" style="margin-bottom:4px;">CONTROLS</div>
-              <div style="display:flex; gap:8px; justify-content: center; align-items: center; height: 100%;">
+              <div
+                style="display:flex; flex-direction:row; gap:6px; justify-content: center; align-items: stretch; height: calc(100% - 15px);">
                 <button onclick="sysAction('reboot')"
-                  style="width:40px;height:40px;border:1px solid var(--green);background:rgba(57,255,20,0.08);color:var(--green);font-size:18px;border-radius:50%;cursor:pointer;display:flex;align-items:center;justify-content:center;line-height:1;">🟢</button>
+                  style="flex:1; background:linear-gradient(180deg, rgba(0,229,255,0.1), transparent); border:1px solid rgba(0,229,255,0.3); color:var(--cyan); font-family:'Rajdhani',sans-serif; font-size:11px; font-weight:700; letter-spacing:1px; border-radius:4px; cursor:pointer; text-transform:uppercase; box-shadow:0 0 6px rgba(0,229,255,0.1); transition:all 0.2s;">REBOOT</button>
                 <button onclick="sysAction('shutdown')"
-                  style="width:40px;height:40px;border:1px solid #f85149;background:rgba(248,81,73,0.08);color:#f85149;font-size:18px;border-radius:50%;cursor:pointer;display:flex;align-items:center;justify-content:center;line-height:1;">🔴</button>
+                  style="flex:1; background:linear-gradient(180deg, rgba(255,0,255,0.1), transparent); border:1px solid rgba(255,0,255,0.3); color:var(--magenta); font-family:'Rajdhani',sans-serif; font-size:11px; font-weight:700; letter-spacing:1px; border-radius:4px; cursor:pointer; text-transform:uppercase; box-shadow:0 0 6px rgba(255,0,255,0.1); transition:all 0.2s;">PWR_OFF</button>
               </div>
             </div>
           </div>
@@ -1172,7 +1181,12 @@
       defs.append('filter').attr('id', 'glow').append('feGaussianBlur').attr('stdDeviation', '2.5');
 
       const g = svg.append('g');
-      svg.call(d3.zoom().scaleExtent([0.2, 5]).on('zoom', e => g.attr('transform', e.transform)));
+      const zoom = d3.zoom().scaleExtent([0.1, 8]).on('zoom', e => {
+        g.attr('transform', e.transform);
+        // Show data edge labels only when zoomed in close enough (scale > 1.8)
+        g.selectAll('.data-label').style('display', e.transform.k > 1.8 ? 'block' : 'none');
+      });
+      svg.call(zoom);
 
       const chargeStr = visibleNodes.length > 300 ? -15 : (visibleNodes.length > 100 ? -25 : -40);
 
@@ -1198,6 +1212,8 @@
           document.getElementById('node-target').textContent = d.name.toUpperCase();
           document.getElementById('node-metadata').textContent = (d.details || '---').substring(0, 50);
           document.getElementById('node-type').textContent = (d.type || d.group || 'DATA').toUpperCase();
+          document.getElementById('node-del-btn').style.display = 'inline-block';
+          window.selectedNodeId = d.id;
 
           // Clear previous selection
           d3.selectAll('circle').interrupt().attr('stroke', 'none').classed('selected-node', false);
@@ -1215,22 +1231,67 @@
           .on('drag', (e, d) => { d.fx = e.x; d.fy = e.y; })
           .on('end', (e, d) => { if (!e.active) currentSim.alphaTarget(0); d.fx = null; d.fy = null; }));
 
-      const label = g.append('g').selectAll('text').data(visibleNodes.filter(d => d.group !== 'data')).enter().append('text')
+      const label = g.append('g').selectAll('text').data(visibleNodes).enter().append('text')
         .text(d => d.name.substring(0, 14))
-        .attr('fill', '#7dd3fc').attr('font-size', '6px')
+        .attr('class', d => d.group === 'data' ? 'data-label' : 'core-label')
+        .attr('fill', d => d.group === 'data' ? '#888' : '#7dd3fc')
+        .attr('font-size', d => d.group === 'data' ? '4px' : '6px')
         .attr('font-family', '"Share Tech Mono", monospace')
         .attr('text-anchor', 'middle').attr('dy', d => d.size * 0.5 + 8)
-        .style('pointer-events', 'none');
+        .style('pointer-events', 'none')
+        .style('display', d => d.group === 'data' ? 'none' : 'block');
 
       currentSim.on('tick', () => {
         link.attr('x1', d => d.source.x).attr('y1', d => d.source.y).attr('x2', d => d.target.x).attr('y2', d => d.target.y);
         node.attr('cx', d => d.x).attr('cy', d => d.y);
         label.attr('x', d => d.x).attr('y', d => d.y);
       });
+      window.searchNodes = function (term) {
+        if (!term) {
+          d3.selectAll('circle').attr('stroke', 'none').classed('selected-node', false);
+          return;
+        }
+        const lowerTerm = term.toLowerCase();
+        let found = false;
+        d3.selectAll('circle').each(function (d) {
+          const match = d.name.toLowerCase().includes(lowerTerm) || (d.details && d.details.toLowerCase().includes(lowerTerm));
+          if (match) {
+            d3.select(this).attr('stroke', '#fff').attr('stroke-width', 2).classed('selected-node', true);
+            if (!found) {
+              // Trigger click telemetry artificially
+              document.getElementById('node-target').textContent = d.name.toUpperCase();
+              document.getElementById('node-metadata').textContent = (d.details || '---').substring(0, 50);
+              document.getElementById('node-type').textContent = (d.type || d.group || 'DATA').toUpperCase();
+              document.getElementById('node-del-btn').style.display = 'inline-block';
+              window.selectedNodeId = d.id;
+
+              // Zoom to node
+              const transform = d3.zoomIdentity.translate(W / 2, H / 2).scale(2.5).translate(-d.x, -d.y);
+              svg.transition().duration(750).call(zoom.transform, transform);
+
+              found = true;
+            }
+          } else {
+            d3.select(this).attr('stroke', 'none').classed('selected-node', false);
+          }
+        });
+      };
     }
 
     // Slider callback
     window.updateCogMap = function (val) { buildCogMap(parseInt(val)); };
+
+    // (Search function moved to buildCogMap scope)
+
+    window.deleteSelectedNode = function () {
+      if (window.selectedNodeId) {
+        if (confirm(`Are you sure you want to delete node [${window.selectedNodeId}] from TARS memory? This cannot be undone.`)) {
+          const url = new URL(window.parent.location);
+          url.searchParams.set("delete_node", window.selectedNodeId);
+          window.parent.location.href = url.href;
+        }
+      }
+    };
 
     // Initial load - default slider at 50% (capped ~500 if many nodes)
     function initCogMap() {
