@@ -183,7 +183,7 @@ class MemoryEngine:
     async def store_interaction(self, user_id, username, prompt, response, guild_id="DM", channel_id="DM", llm_client=None, model_name=None, emo_results=None, full_prompt="[Combined Context]", memories="[]"):
         """High-level method to persist everything about an interaction."""
         # 1. Log to SQLite
-        mood = emo_results[0]['label'] if emo_results else "neutral"
+        mood = max(emo_results, key=lambda x: x['score'])['label'] if emo_results else "neutral"
         
         await self.log_interaction(
             user_id=user_id,

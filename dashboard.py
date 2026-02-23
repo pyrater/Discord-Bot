@@ -26,395 +26,12 @@ from brain import CognitiveEngine
 from openai import AsyncOpenAI
 
 # --- STYLING: NEXUS CORE AESTHETIC ---
-GLOBAL_CSS = """
-<style>
-/* TARS DASHBOARD THEME V2 - PREMIUM CINEMATIC */
-@import url('https://fonts.googleapis.com/css2?family=Orbitron:wght@400;500;700;900&family=Space+Grotesk:wght@300;400;500;700&family=JetBrains+Mono:wght@400;700&display=swap');
-
-:root {
-    --bg-deep: #020202;
-    --bg-panel: #0a0a0a;
-    --text-primary: #e0e0e0;
-    --text-secondary: #a0a0a0;
-    --tars-amber: #ffca28;
-    --tars-amber-glow: rgba(255, 202, 40, 0.4);
-    --tars-cyan: #00f0ff;
-    --tars-cyan-glow: rgba(0, 240, 255, 0.4);
-    --glass-bg: rgba(15, 15, 15, 0.6);
-    --glass-border: 1px solid rgba(255, 255, 255, 0.08);
-    --card-shadow: 0 4px 30px rgba(0, 0, 0, 0.5);
-    
-    /* Compatibility vars for existing code */
-    --accent-blue: #00f0ff; 
-    --neon-blue: #00f0ff;
-    --neon-purple: #9d46ff;
-    --neon-red: #ff4444;
-
-    /* Bottom widget aliases (referenced by _card / _mini_bar_svg) */
-    --text: #e0e0e0;
-    --text-dim: #a0a0a0;
-    --cyan: #00f0ff;
-}
-
-/* GLOBAL RESET & BACKGROUND */
-.stApp {
-    background-color: var(--bg-deep);
-    background-image:
-        radial-gradient(circle at 15% 50%, rgba(20, 20, 20, 1) 0%, transparent 25%),
-        radial-gradient(circle at 85% 30%, rgba(10, 10, 30, 0.4) 0%, transparent 25%);
-    font-family: 'Space Grotesk', sans-serif !important;
-    color: var(--text-primary) !important;
-}
-
-/* TYPOGRAPHY */
-h1, h2, h3, .hud-title, .stsubheader, .stTitle {
-    font-family: 'Orbitron', sans-serif !important;
-    text-transform: uppercase;
-    letter-spacing: 2px !important;
-    color: var(--text-primary) !important;
-    text-shadow: 0 0 10px rgba(0,0,0,0.5);
-    border: none !important;
-}
-
-.mono, code, pre, .hud-value, .stMetricValue, .stDataFrame {
-    font-family: 'JetBrains Mono', monospace !important;
-}
-
-/* HIDE STREAMLIT CHROME */
-[data-testid="stSidebar"] { display: none !important; }
-#MainMenu, footer, header { visibility: hidden !important; }
-
-/* LAYOUT CLEANUP */
-.block-container {
-    padding-top: 1rem !important;
-    padding-bottom: 5rem !important;
-    max-width: 95rem !important;
-}
-
-/* --- NEXUS HUD (CUSTOM ADAPTATION) --- */
-.nexus-hud {
-    display: flex; justify-content: space-between; align-items: center;
-    background: rgba(10, 10, 10, 0.7);
-    border-bottom: 1px solid var(--tars-cyan);
-    box-shadow: 0 5px 20px rgba(0, 240, 255, 0.1);
-    padding: 15px 30px; 
-    margin-bottom: 35px;
-    backdrop-filter: blur(20px);
-    border-radius: 0 0 16px 16px;
-    position: relative;
-    overflow: hidden;
-}
-
-/* HUD GLOW LINE */
-.nexus-hud::after {
-    content: ''; position: absolute; bottom: 0; left: 0; width: 100%; height: 2px;
-    background: linear-gradient(90deg, transparent, var(--tars-cyan), transparent);
-    box-shadow: 0 0 15px var(--tars-cyan);
-}
-
-.hud-group {
-    display: flex; gap: 40px; align-items: center;
-}
-
-.hud-item {
-    text-align: left;
-    display: flex; flex-direction: column;
-    border-left: 2px solid rgba(255,255,255,0.05);
-    padding-left: 15px;
-}
-
-.hud-label {
-    font-size: 11px; color: var(--text-secondary); text-transform: uppercase; letter-spacing: 1.5px; margin-bottom: 4px;
-    font-family: 'Orbitron', sans-serif; font-weight: 500;
-}
-
-.hud-value {
-    font-size: 18px; font-weight: 600; color: var(--text-primary);
-    text-shadow: 0 0 5px rgba(255,255,255,0.2);
-}
-
-.hud-title {
-    font-size: 24px; color: var(--text-primary);
-    font-weight: 800 !important;
-    letter-spacing: 3px !important;
-    background: linear-gradient(90deg, #fff, var(--text-secondary));
-    -webkit-background-clip: text;
-    -webkit-text-fill-color: transparent;
-}
-
-/* --- CARDS & PANELS --- */
-.tech-card, div[data-testid="stMetric"], div[data-testid="stExpander"] {
-    background: var(--glass-bg) !important;
-    border: var(--glass-border) !important;
-    border-radius: 12px !important;
-    padding: 20px !important;
-    box-shadow: var(--card-shadow) !important;
-    backdrop-filter: blur(25px);
-    margin-bottom: 20px;
-    transition: transform 0.3s ease, box-shadow 0.3s ease, border-color 0.3s ease;
-}
-
-.tech-card:hover, div[data-testid="stMetric"]:hover {
-    transform: translateY(-3px);
-    box-shadow: 0 10px 40px rgba(0,0,0,0.6), 0 0 15px var(--tars-cyan-glow) !important;
-    border-color: var(--tars-cyan) !important;
-}
-
-/* METRICS SPECIFIC */
-[data-testid="stMetricValue"] {
-    font-family: 'Orbitron', sans-serif !important;
-    color: var(--tars-cyan) !important;
-    font-size: 32px !important;
-    font-weight: 700 !important;
-    text-shadow: 0 0 15px var(--tars-cyan-glow);
-}
-[data-testid="stMetricLabel"] {
-    font-family: 'Space Grotesk', sans-serif !important;
-    font-weight: 700;
-    text-transform: uppercase;
-    letter-spacing: 1px;
-    color: var(--text-secondary) !important;
-}
-
-/* --- BUTTONS (PREMIUM) --- */
-div.stButton > button {
-    background: linear-gradient(135deg, rgba(255,255,255,0.05) 0%, rgba(255,255,255,0.01) 100%) !important;
-    border: 1px solid rgba(255,255,255,0.1) !important;
-    color: var(--text-primary) !important;
-    font-family: 'Orbitron', sans-serif !important;
-    letter-spacing: 1.5px !important;
-    text-transform: uppercase !important;
-    padding: 12px 28px !important;
-    border-radius: 4px !important;
-    transition: all 0.3s cubic-bezier(0.4, 0, 0.2, 1);
-    position: relative;
-    overflow: hidden;
-    font-weight: 600 !important;
-}
-
-div.stButton > button::before {
-    content: ''; position: absolute; top: 0; left: -100%; width: 100%; height: 100%;
-    background: linear-gradient(90deg, transparent, rgba(255, 202, 40, 0.2), transparent);
-    transition: 0.5s;
-}
-
-div.stButton > button:hover::before { left: 100%; }
-
-div.stButton > button:hover {
-    border-color: var(--tars-amber) !important;
-    color: var(--tars-amber) !important;
-    box-shadow: 0 0 20px var(--tars-amber-glow);
-    transform: translateY(-2px);
-}
-
-/* DANGER BUTTONS */
-div[data-testid="stButton"] button:contains("DELETE"), 
-div[data-testid="stButton"] button:contains("SHUTDOWN") {
-    border-color: rgba(255, 68, 68, 0.3) !important; color: var(--neon-red) !important;
-}
-div[data-testid="stButton"] button:contains("DELETE"):hover,
-div[data-testid="stButton"] button:contains("SHUTDOWN"):hover {
-    border-color: var(--neon-red) !important;
-    box-shadow: 0 0 20px rgba(255, 68, 68, 0.4);
-}
-
-/* --- INPUTS --- */
-.stTextInput input, .stSelectbox div[data-baseweb="select"], .stTextArea textarea {
-    background-color: rgba(0, 0, 0, 0.4) !important;
-    border: 1px solid rgba(255, 255, 255, 0.1) !important;
-    color: var(--tars-cyan) !important;
-    border-radius: 4px !important;
-    font-family: 'JetBrains Mono', monospace !important;
-    transition: all 0.3s ease;
-}
-.stTextInput input:focus, .stTextArea textarea:focus {
-    border-color: var(--tars-cyan) !important;
-    box-shadow: 0 0 15px var(--tars-cyan-glow) !important;
-    background-color: rgba(0, 240, 255, 0.05) !important;
-}
-
-/* --- TABS --- */
-.stTabs [data-baseweb="tab-list"] { gap: 20px; margin-bottom: 25px; border-bottom: 1px solid var(--glass-border); padding-bottom: 0px; }
-.stTabs [data-baseweb="tab"] {
-    background: transparent;
-    border: none;
-    color: var(--text-secondary);
-    font-family: 'Space Grotesk', sans-serif;
-    font-weight: 500;
-    font-size: 15px;
-    padding: 12px 15px;
-    transition: all 0.3s;
-}
-.stTabs [aria-selected="true"] {
-    color: var(--tars-amber) !important;
-    border-bottom: 2px solid var(--tars-amber) !important;
-    font-weight: 700 !important;
-    text-shadow: 0 0 10px var(--tars-amber-glow);
-}
-
-/* --- ANIMATIONS --- */
-@keyframes fadeIn {
-    from { opacity: 0; transform: translateY(10px); }
-    to { opacity: 1; transform: translateY(0); }
-}
-.element-container, .stMarkdown, .stMetric {
-    animation: fadeIn 0.6s cubic-bezier(0.2, 0.8, 0.2, 1) forwards;
-}
-
-/* --- SCROLLBAR --- */
-::-webkit-scrollbar { width: 8px; height: 8px; }
-::-webkit-scrollbar-track { background: #050505; }
-::-webkit-scrollbar-thumb { background: #333; border-radius: 4px; }
-::-webkit-scrollbar-thumb:hover { background: var(--tars-cyan); }
-
-/* --- DEBUG VIEWS --- */
-.debug-label {
-    font-family: 'Orbitron', sans-serif !important;
-    font-size: 9px !important;
-    color: var(--text-secondary) !important;
-    text-transform: uppercase !important;
-    letter-spacing: 1px !important;
-    margin-bottom: 4px !important;
-    margin-top: 10px !important;
-}
-.debug-box {
-    background: rgba(0, 0, 0, 0.4) !important;
-    border: 1px solid rgba(0, 240, 255, 0.1) !important;
-    border-radius: 6px !important;
-    padding: 10px !important;
-    font-family: 'JetBrains Mono', monospace !important;
-    font-size: 9px !important;
-    color: var(--tars-cyan) !important;
-    min-height: 40px !important;
-    max-height: 200px !important;
-    overflow-y: auto !important;
-    white-space: pre-wrap !important;
-    word-break: break-all !important;
-}
-
-/* --- RESPONSIVE: TABLET (≤1024px) --- */
-@media (max-width: 1024px) {
-    .block-container {
-        max-width: 100% !important;
-        padding-left: 1rem !important;
-        padding-right: 1rem !important;
-    }
-    .nexus-hud {
-        padding: 12px 18px;
-    }
-    .hud-group {
-        gap: 20px;
-    }
-    .hud-value {
-        font-size: 15px;
-    }
-    [data-testid="stMetricValue"] {
-        font-size: 26px !important;
-    }
-}
-
-/* --- RESPONSIVE: PHONE (≤768px) --- */
-@media (max-width: 768px) {
-    .block-container {
-        padding-left: 0.5rem !important;
-        padding-right: 0.5rem !important;
-        padding-top: 0.5rem !important;
-    }
-    /* HUD: stack vertically */
-    .nexus-hud {
-        flex-direction: column;
-        gap: 12px;
-        padding: 10px 12px;
-        align-items: flex-start;
-        margin-bottom: 20px;
-    }
-    .hud-group {
-        flex-wrap: wrap;
-        gap: 12px;
-        width: 100%;
-    }
-    .hud-item {
-        padding-left: 8px;
-        flex: 1 1 40%;
-        min-width: 0;
-    }
-    .hud-title {
-        font-size: 18px !important;
-        letter-spacing: 2px !important;
-    }
-    .hud-value {
-        font-size: 14px;
-    }
-    .hud-label {
-        font-size: 9px;
-    }
-    /* TABS: horizontal scroll instead of wrapping */
-    .stTabs [data-baseweb="tab-list"] {
-        gap: 2px;
-        overflow-x: auto;
-        flex-wrap: nowrap;
-        -webkit-overflow-scrolling: touch;
-        scrollbar-width: none;
-        padding-bottom: 4px;
-    }
-    .stTabs [data-baseweb="tab-list"]::-webkit-scrollbar {
-        display: none;
-    }
-    .stTabs [data-baseweb="tab"] {
-        font-size: 11px;
-        padding: 8px 8px;
-        white-space: nowrap;
-        flex-shrink: 0;
-    }
-    /* METRICS */
-    [data-testid="stMetricValue"] {
-        font-size: 20px !important;
-    }
-    /* CARDS */
-    .tech-card, div[data-testid="stMetric"], div[data-testid="stExpander"] {
-        padding: 12px !important;
-        border-radius: 8px !important;
-        margin-bottom: 12px;
-    }
-    .tech-card:hover, div[data-testid="stMetric"]:hover {
-        transform: none;
-    }
-    /* BUTTONS */
-    div.stButton > button {
-        padding: 10px 14px !important;
-        font-size: 10px !important;
-        letter-spacing: 1px !important;
-    }
-    /* DEBUG */
-    .debug-box {
-        font-size: 8px !important;
-        max-height: 150px !important;
-    }
-    /* INPUTS */
-    .stTextInput input, .stTextArea textarea {
-        font-size: 13px !important;
-    }
-}
-
-/* --- RESPONSIVE: SMALL PHONE (≤480px) --- */
-@media (max-width: 480px) {
-    .hud-title {
-        font-size: 15px !important;
-    }
-    .hud-item {
-        flex: 1 1 100%;
-    }
-    .stTabs [data-baseweb="tab"] {
-        font-size: 10px;
-        padding: 6px 6px;
-    }
-    [data-testid="stMetricValue"] {
-        font-size: 18px !important;
-    }
-}
-
-</style>
-"""
+def load_css():
+    css_path = os.path.join(BASE_DIR, "assets", "style.css")
+    if os.path.exists(css_path):
+        with open(css_path, "r", encoding="utf-8") as f:
+            return f"<style>{f.read()}</style>"
+    return ""
 
 def nexus_header():
     cpu = psutil.cpu_percent()
@@ -423,39 +40,73 @@ def nexus_header():
     # Calculate Neural Stress from recent audit logs
     try:
         df = get_audit_logs().head(20)
-        error_count = len(df[df['mood'].str.lower().str.contains('error|fail|warn', na=False)])
+        # GoEmotions Stress Labels + System Errors
+        stress_labels = ['anger', 'annoyance', 'disappointment', 'disapproval', 'disgust', 'fear', 'grief', 'nervousness', 'remorse', 'sadness', 'error', 'fail', 'warn']
+        error_count = len(df[df['mood'].str.lower().str.contains('|'.join(stress_labels), na=False)])
         neural_stress = min(1.0, error_count / 10.0)
-        last_mood = df.iloc[0]['mood'] if not df.empty else "STANDBY"
+        if not df.empty:
+            raw_mood = df.iloc[0]['mood']
+            # Take only the first word (emotion name) if it has a score or extra text
+            last_mood = raw_mood.split('(')[0].strip() if '(' in raw_mood else raw_mood.split()[0] if ' ' in raw_mood else raw_mood
+        else:
+            last_mood = "STANDBY"
     except:
         neural_stress = 0.0
         last_mood = "UNKNOWN"
 
-    stress_color = "#ff4444" if neural_stress > 0.6 else ("#ffca28" if neural_stress > 0.3 else "#00f0ff")
+    stress_class = "orange" if neural_stress > 0.6 else ("orange" if neural_stress > 0.3 else "")
     
     st.markdown(f"""
-        <div class="nexus-hud">
-            <div class="hud-group">
-                <div class="hud-title">TARS <span style="font-size:12px; opacity:0.8; letter-spacing:4px; vertical-align:middle; text-shadow:0 0 10px var(--tars-cyan);">// NEXUS</span></div>
+        <style>
+        .mobile-header {{
+            position: relative;
+            display: flex; justify-content: space-between; align-items: center;
+            padding: 12px 16px 10px;
+            border-bottom: 1px solid var(--panel-border);
+            background: rgba(4, 6, 9, 0.98);
+            backdrop-filter: blur(15px);
+            margin-top: -3rem; /* Pull back into top padding */
+            z-index: 100;
+        }}
+        .brand {{
+            font-family: 'Rajdhani', sans-serif; font-size: 16px; font-weight: 700;
+            color: var(--text-dim); letter-spacing: 2px;
+        }}
+        .brand span {{
+            color: var(--tars-cyan); text-shadow: 0 0 8px var(--tars-cyan-glow);
+        }}
+        .header-metrics {{
+            display: flex; align-items: center; gap: 12px;
+            font-family: 'Share Tech Mono', monospace; font-size: 10px;
+        }}
+        .hm-item {{
+            display: flex; flex-direction: column; align-items: flex-end;
+            color: var(--text-secondary);
+        }}
+        .hm-val {{
+            color: var(--text-primary); font-size: 12px; font-weight: bold;
+        }}
+        .hm-val.orange {{ color: var(--tars-amber); text-shadow: 0 0 8px var(--tars-amber-glow); }}
+        .header-pulse {{
+            width: 8px; height: 8px; border-radius: 50%;
+            background: var(--tars-cyan); box-shadow: 0 0 10px var(--tars-cyan);
+            animation: pulseGlow 2s infinite;
+        }}
+        @keyframes pulseGlow {{
+            0%,100% {{ opacity: 1; transform: scale(1); }}
+            50%      {{ opacity: 0.4; transform: scale(0.7); }}
+        }}
+        </style>
+
+        <header class="mobile-header">
+            <div class="brand">TARS // <span>NEXUS</span></div>
+            <div class="header-metrics">
+                <div class="hm-item">CPU<span class="hm-val">{cpu}%</span></div>
+                <div class="hm-item">RAM<span class="hm-val">{ram}%</span></div>
+                <div class="hm-item">STATE<span class="hm-val {stress_class}">{last_mood.upper()[:7]}</span></div>
+                <div class="header-pulse"></div>
             </div>
-            <div class="hud-group">
-                <div class="hud-item">
-                    <div class="hud-label">CPU LOAD</div>
-                    <div class="hud-value" style="color: var(--tars-cyan);">{cpu}%</div>
-                </div>
-                <div class="hud-item">
-                    <div class="hud-label">RAM USAGE</div>
-                    <div class="hud-value" style="color: var(--tars-cyan);">{ram}%</div>
-                </div>
-                <div class="hud-item">
-                    <div class="hud-label">NEURAL STRESS</div>
-                    <div class="hud-value" style="color: {stress_color}; text-shadow: 0 0 10px {stress_color}66;">{int(neural_stress*100)}%</div>
-                </div>
-                <div class="hud-item">
-                    <div class="hud-label">COGNITIVE STATE</div>
-                    <div class="hud-value" style="color: var(--tars-amber); text-shadow: 0 0 10px var(--tars-amber-glow);">{last_mood.upper()}</div>
-                </div>
-            </div>
-        </div>
+        </header>
     """, unsafe_allow_html=True)
 
     return neural_stress # Return this so we can override the sidebar calculation later
@@ -585,7 +236,7 @@ if not check_password():
 
 # --- PAGE CONFIG ---
 st.set_page_config(page_title="TARS Nexus Core", layout="wide", page_icon="🤖")
-st.markdown(GLOBAL_CSS, unsafe_allow_html=True)
+st.markdown(load_css(), unsafe_allow_html=True)
 
 # --- DASHBOARD UI ---
 
@@ -773,6 +424,7 @@ with tab_brain_explorer: # Renamed from tab_brain_explorer to tab_brain in instr
     st.markdown("### 🧠 Neural Core Explorer") # Changed from st.subheader and st.caption
     
     # Phase 3: Cognitive Control Layer
+    # On mobile landscape, a 2:1 ratio can squish the slider too much. Using equal or removing ratios is safer if not strictly needed, but 2:1 is usually okay if the container is wide enough.
     col_ctrl1, col_ctrl2 = st.columns([2, 1])
     with col_ctrl1:
         time_range = st.select_slider(
@@ -998,16 +650,15 @@ with tab_brain_explorer: # Renamed from tab_brain_explorer to tab_brain in instr
     <div id="brain-viz-container" style="width:100%; height:min(900px, 80vh); background:transparent; position:relative; overflow:hidden;">
         <svg id="brain-viz" style="width:100%; height:100%; cursor:move;"></svg>
         
-        <div id="brain-search-container" style="position:absolute; top:20px; left:20px; z-index:100; display:flex; gap:10px;">
+        <div id="brain-search-container" style="position:absolute; top:80px; left:20px; z-index:50; display:flex; gap:10px;">
             <input type="text" id="node-search" placeholder="Search cognitive map..." 
-                style="background: rgba(15,15,15,0.85); border: 1px solid rgba(88,166,255,0.4); border-radius: 6px; padding: 10px 15px; color: #fff; font-family: monospace; width: 250px; backdrop-filter: blur(10px); outline: none;">
-            <button id="toggle-3d" style="background: rgba(15,15,15,0.85); border: 1px solid #444; color:#aaa; padding:10px; border-radius:6px; cursor:pointer;" onclick="window.toggle3D()">[3D MODE]</button>
+                style="background: rgba(15,15,15,0.85); border: 1px solid rgba(88,166,255,0.4); border-radius: 6px; padding: 10px 15px; color: #fff; font-family: monospace; width: 250px; max-width: 80vw; backdrop-filter: blur(10px); outline: none;">
         </div>
 
-        <div id="brain-details" style="position:absolute; top:20px; right:20px; width:300px; max-width:90vw; background: rgba(10,10,10,0.95); border: 1px solid rgba(0,248,255,0.3); padding:15px; border-radius:10px; font-family: monospace; font-size:11px; backdrop-filter:blur(15px); z-index:100; box-shadow: 0 10px 40px rgba(0,0,0,0.8); transition: all 0.3s;">
+        <div id="brain-details" style="position:absolute; top:70px; right:5%; width:90%; max-width:350px; background: rgba(10,10,10,0.95); border: 1px solid rgba(0,248,255,0.3); padding:15px; border-radius:10px; font-family: monospace; font-size:11px; backdrop-filter:blur(15px); z-index:1000; box-shadow: 0 10px 40px rgba(0,0,0,0.8); transition: all 0.3s; display:none;">
             <div style="color:#7dd3fc; font-weight:bold; border-bottom:1px solid #333; padding-bottom:8px; margin-bottom:10px; letter-spacing:1px; display:flex; justify-content:space-between;">
                 <span>NEURAL TELEMETRY</span>
-                <span id="close-details" style="cursor:pointer; color:#777; font-size:14px;" onclick="document.getElementById('brain-details').style.display='none'">×</span>
+                <span id="close-details" style="cursor:pointer; color:#777; font-size:24px; line-height:0.5; padding:5px;" onclick="document.getElementById('brain-details').style.display='none'">×</span>
             </div>
             <div style="display:flex; justify-content:space-between; align-items:center;">
                 <div id="unit-status" style="color: #7dd3fc;">Stress: <span style="font-weight:bold;">{int(neural_stress*100)}%</span></div>
@@ -1193,7 +844,9 @@ with tab_brain_explorer: # Renamed from tab_brain_explorer to tab_brain in instr
                 .attr("r", 1.5).attr("fill", "#fff").style("filter", "blur(1px)");
 
             function focusNode(d, element) {{
-                document.getElementById("brain-details").style.display = "block";
+                const details = document.getElementById("brain-details");
+                details.style.display = "block";
+                details.style.zIndex = "1000"; // Above normal content
                 document.getElementById("node-info").innerText = "Target: " + d.name.toUpperCase();
                 document.getElementById("full-content").innerText = d.details || "No content.";
                 const metaDiv = document.getElementById("node-meta");

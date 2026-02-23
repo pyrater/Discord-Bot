@@ -2,29 +2,28 @@
 /* Premium, Glassmorphism, Animated */
 
 /* FONTS */
-@import url('https://fonts.googleapis.com/css2?family=Orbitron:wght@400;500;700;900&family=Space+Grotesk:wght@300;400;500;700&family=JetBrains+Mono&display=swap');
+@import url('https://fonts.googleapis.com/css2?family=Share+Tech+Mono&family=Rajdhani:wght@500;700&display=swap');
 
 :root {
-    --bg-deep: #020202;
-    --bg-panel: #0a0a0a;
-    --text-primary: #e0e0e0;
-    --text-secondary: #a0a0a0;
+    --bg-deep: #040609;
+    --bg-panel: rgba(8, 12, 18, 0.92);
+    --panel-border: rgba(0, 229, 255, 0.2);
+    --text-primary: #e0e5ed;
+    --text-secondary: #658096;
     --tars-amber: #ffca28;
     --tars-amber-glow: rgba(255, 202, 40, 0.3);
-    --tars-cyan: #00f0ff;
-    --tars-cyan-glow: rgba(0, 240, 255, 0.3);
-    --glass-bg: rgba(20, 20, 20, 0.6);
-    --glass-border: 1px solid rgba(255, 255, 255, 0.08);
-    --card-shadow: 0 4px 30px rgba(0, 0, 0, 0.5);
+    --tars-cyan: #00e5ff;
+    --tars-cyan-glow: rgba(0, 229, 255, 0.3);
+    --tars-magenta: #ff00ff;
+    --glass-bg: rgba(8, 12, 18, 0.92);
+    --glass-border: 1px solid rgba(0, 229, 255, 0.3);
+    --card-shadow: 0 0 24px rgba(0, 0, 0, 0.7), inset 0 1px 0 rgba(0, 229, 255, 0.06);
 }
 
 /* GLOBAL RESET */
 .stApp {
     background-color: var(--bg-deep);
-    background-image:
-        radial-gradient(circle at 15% 50%, rgba(20, 20, 20, 1) 0%, transparent 25%),
-        radial-gradient(circle at 85% 30%, rgba(10, 10, 30, 0.4) 0%, transparent 25%);
-    font-family: 'Space Grotesk', sans-serif;
+    font-family: 'Rajdhani', sans-serif;
     color: var(--text-primary);
 }
 
@@ -34,7 +33,8 @@ h2,
 h3,
 .stsubheader,
 .stTitle {
-    font-family: 'Orbitron', sans-serif;
+    font-family: 'Rajdhani', sans-serif;
+    font-weight: 700;
     text-transform: uppercase;
     letter-spacing: 2px;
     color: var(--text-primary) !important;
@@ -57,35 +57,52 @@ section[data-testid="stSidebar"] {
 }
 
 /* CARDS / METRICS */
-div[data-testid="stMetric"] {
+div[data-testid="stMetric"],
+.tech-card {
     background: var(--glass-bg);
+    backdrop-filter: blur(14px);
     border: var(--glass-border);
-    padding: 15px;
     border-radius: 8px;
-    backdrop-filter: blur(25px);
-    /* Deepened blur */
+    padding: 14px;
     box-shadow: var(--card-shadow);
     transition: transform 0.3s ease, box-shadow 0.3s ease;
 }
 
-div[data-testid="stMetric"]:hover {
+div[data-testid="stMetric"]:hover,
+.tech-card:hover {
     transform: translateY(-2px);
     box-shadow: 0 8px 30px rgba(0, 0, 0, 0.6), 0 0 10px var(--tars-cyan-glow);
     border-color: var(--tars-cyan);
 }
 
 [data-testid="stMetricValue"] {
-    font-family: 'Orbitron', sans-serif;
+    font-family: 'Rajdhani', sans-serif;
+    font-weight: 700;
     color: var(--tars-cyan) !important;
     font-size: 28px !important;
+    text-shadow: 0 0 10px rgba(0, 229, 255, 0.5);
 }
 
 [data-testid="stMetricLabel"] {
-    font-family: 'Space Grotesk', sans-serif;
+    font-family: 'Rajdhani', sans-serif;
+    font-size: 11px !important;
     font-weight: 700;
-    text-transform: uppercase;
-    letter-spacing: 1px;
     color: var(--text-secondary);
+    text-transform: uppercase;
+    letter-spacing: 1.5px;
+    display: flex;
+    align-items: center;
+    gap: 8px;
+}
+
+[data-testid="stMetricLabel"]::before {
+    content: '';
+    display: block;
+    width: 3px;
+    height: 12px;
+    background: var(--tars-cyan);
+    border-radius: 2px;
+    box-shadow: 0 0 6px var(--tars-cyan);
 }
 
 /* DATAFRAMES / TABLES */
@@ -103,10 +120,10 @@ div[data-testid="stDataFrame"]>div {
 .stTextInput>div>div>input,
 .stTextArea>div>div>textarea,
 .stSelectbox>div>div>div {
-    background-color: rgba(0, 0, 0, 0.3);
-    color: var(--tars-cyan);
-    border: 1px solid rgba(255, 255, 255, 0.1);
-    font-family: 'JetBrains Mono', monospace;
+    background-color: rgba(0, 229, 255, 0.04);
+    color: var(--text-primary);
+    border: 1px solid var(--panel-border);
+    font-family: 'Share Tech Mono', monospace;
     transition: all 0.3s ease;
     border-radius: 4px;
 }
@@ -120,15 +137,17 @@ div[data-testid="stDataFrame"]>div {
 
 /* BUTTONS */
 div.stButton>button {
-    background: linear-gradient(135deg, rgba(255, 255, 255, 0.05) 0%, rgba(255, 255, 255, 0.01) 100%) !important;
-    border: 1px solid rgba(255, 255, 255, 0.1) !important;
-    color: var(--text-primary) !important;
-    font-family: 'Orbitron', sans-serif !important;
-    letter-spacing: 1px;
+    background: linear-gradient(135deg, rgba(0, 229, 255, 0.15), rgba(255, 0, 255, 0.1)) !important;
+    border: 1px solid var(--tars-cyan) !important;
+    color: var(--tars-cyan) !important;
+    font-family: 'Rajdhani', sans-serif !important;
+    letter-spacing: 2px;
     text-transform: uppercase;
+    font-weight: 700;
     padding: 10px 24px !important;
-    border-radius: 4px !important;
-    transition: all 0.3s cubic-bezier(0.4, 0, 0.2, 1);
+    border-radius: 6px !important;
+    box-shadow: 0 0 14px rgba(0, 229, 255, 0.15) !important;
+    transition: box-shadow 0.2s;
     position: relative;
     overflow: hidden;
 }
@@ -140,7 +159,7 @@ div.stButton>button::before {
     left: -100%;
     width: 100%;
     height: 100%;
-    background: linear-gradient(90deg, transparent, rgba(255, 255, 255, 0.1), transparent);
+    background: linear-gradient(90deg, transparent, rgba(0, 229, 255, 0.2), transparent);
     transition: 0.5s;
 }
 
@@ -149,13 +168,12 @@ div.stButton>button:hover::before {
 }
 
 div.stButton>button:hover {
-    border-color: var(--tars-cyan) !important;
-    color: var(--tars-cyan) !important;
-    box-shadow: 0 0 20px var(--tars-cyan-glow);
+    box-shadow: 0 0 24px rgba(0, 229, 255, 0.35) !important;
     transform: translateY(-1px);
 }
 
 div.stButton>button:active {
+    box-shadow: 0 0 30px rgba(0, 229, 255, 0.5) !important;
     transform: scale(0.98);
 }
 
@@ -245,6 +263,11 @@ div[data-testid="stChatMessage"][data-testid="assistant"] {
     border-left: 3px solid var(--tars-amber);
 }
 
+/* HIDE STREAMLIT DEFAULT HEADER */
+header[data-testid="stHeader"] {
+    display: none !important;
+}
+
 /* SCROLLBAR */
 ::-webkit-scrollbar {
     width: 8px;
@@ -262,4 +285,177 @@ div[data-testid="stChatMessage"][data-testid="assistant"] {
 
 ::-webkit-scrollbar-thumb:hover {
     background: var(--tars-cyan);
+}
+
+/* ==========================================================================
+   RESPONSIVE DESIGN (MOBILE CENTRIC)
+   ========================================================================== */
+
+/* --- TABLET / SMALL DESKTOP (≤1024px) --- */
+@media (max-width: 1024px) {
+    .block-container {
+        max-width: 100% !important;
+        padding-left: 1rem !important;
+        padding-right: 1rem !important;
+    }
+
+    div[data-testid="stMetricValue"] {
+        font-size: 26px !important;
+    }
+}
+
+/* --- MOBILE LANDSCAPE & SMALL TABLETS (≤768px) --- */
+@media (max-width: 768px) {
+    .block-container {
+        padding-left: 0.5rem !important;
+        padding-right: 0.5rem !important;
+        padding-top: 0.5rem !important;
+    }
+
+    /* Metrics and Cards: Allow grid flexibility */
+    div[data-testid="stMetric"] {
+        padding: 10px !important;
+    }
+
+    [data-testid="stMetricValue"] {
+        font-size: 22px !important;
+    }
+
+    [data-testid="stMetricLabel"] {
+        font-size: 11px !important;
+    }
+
+    /* Buttons */
+    div.stButton>button {
+        padding: 8px 16px !important;
+        font-size: 12px !important;
+        width: 100%;
+        /* Full width for easy tapping */
+    }
+
+    /* Tabs: Horizontal scroll instead of wrapping and breaking layout */
+    .stTabs [data-baseweb="tab-list"] {
+        gap: 5px;
+        overflow-x: auto;
+        flex-wrap: nowrap;
+        -webkit-overflow-scrolling: touch;
+        scrollbar-width: none;
+        /* Hide scrollbar Firefox */
+        padding-bottom: 5px;
+    }
+
+    .stTabs [data-baseweb="tab-list"]::-webkit-scrollbar {
+        display: none;
+        /* Hide scrollbar Chrome/Safari */
+    }
+
+    .stTabs [data-baseweb="tab"] {
+        font-size: 12px;
+        padding: 8px 10px;
+        white-space: nowrap;
+        flex-shrink: 0;
+    }
+
+    /* Terminal Box */
+    .debug-box {
+        font-size: 10px !important;
+        padding: 10px !important;
+    }
+}
+
+/* --- MOBILE PORTRAIT (≤480px) --- */
+@media (max-width: 480px) {
+    /* Stack elements forcefully if Streamlit tries to keep them adjacent */
+    /* Streamlit usually handles columns well on very small screens, 
+       but we ensure text sizes match the small viewport */
+
+    .block-container {
+        padding-top: 150px !important;
+        /* Space for the header AND the fixed top nav */
+        padding-bottom: 20px !important;
+        /* reset bottom space */
+    }
+
+    h1,
+    .stTitle {
+        font-size: 24px !important;
+    }
+
+    h2,
+    .stsubheader {
+        font-size: 18px !important;
+    }
+
+    h3 {
+        font-size: 16px !important;
+    }
+
+    [data-testid="stMetricValue"] {
+        font-size: 20px !important;
+    }
+
+    /* Force full width on buttons */
+    div.stButton {
+        width: 100%;
+    }
+
+    /* Chat bubbles compact */
+    div[data-testid="stChatMessage"] {
+        padding: 10px;
+        margin-bottom: 8px;
+        font-size: 14px;
+    }
+
+    /* Hide some visual flair to save performance/space */
+    .scanline-overlay {
+        opacity: 0.3 !important;
+    }
+
+    /* Convert Tabs to Fluid Top Nav */
+    .stTabs [data-baseweb="tab-list"] {
+        position: relative;
+        width: 100%;
+        background: rgba(4, 6, 9, 0.95);
+        border-bottom: 1px solid var(--panel-border);
+        padding: 5px 0 5px 0;
+        display: flex;
+        justify-content: flex-start;
+        /* Switch to horizontal scroll instead of squishing */
+        gap: 15px;
+        padding-left: 10px;
+        overflow-x: auto;
+        -webkit-overflow-scrolling: touch;
+        scrollbar-width: none;
+        backdrop-filter: blur(10px);
+    }
+
+    .stTabs [data-baseweb="tab-list"]::-webkit-scrollbar {
+        display: none;
+    }
+
+    .stTabs [data-baseweb="tab"] {
+        flex: 0 0 auto;
+        display: flex;
+        align-items: center;
+        justify-content: center;
+        font-size: 12px;
+        font-weight: 700;
+        padding: 10px 4px;
+        color: var(--text-secondary);
+        border: none !important;
+        background: transparent !important;
+        text-transform: uppercase;
+        letter-spacing: 1px;
+    }
+
+    .stTabs [data-baseweb="tab"][aria-selected="true"] {
+        color: var(--tars-cyan) !important;
+        text-shadow: 0 0 8px var(--tars-cyan-glow);
+        border-bottom: 2px solid var(--tars-cyan) !important;
+    }
+
+    /* Remove the little dot we added for the bottom nav */
+    .stTabs [data-baseweb="tab"]::before {
+        display: none;
+    }
 }
