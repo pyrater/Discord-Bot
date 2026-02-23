@@ -1,430 +1,688 @@
 <!DOCTYPE html>
 <html lang="en">
+
 <head>
-<meta charset="UTF-8">
-<meta name="viewport" content="width=device-width, initial-scale=1.0">
-<title>TARS // NEXUS CORE</title>
-<style>
-  @import url('https://fonts.googleapis.com/css2?family=Share+Tech+Mono&family=Rajdhani:wght@500;700&display=swap');
-  
-  :root {
-    --bg: #040609;
-    --panel-bg: rgba(8, 12, 18, 0.85);
-    --panel-border: rgba(0, 229, 255, 0.2);
-    --text-main: #e0e6ed;
-    --text-dim: #6b8299;
-    --cyan: #00e5ff;
-    --magenta: #ff00ff;
-    --green: #39ff14;
-    --orange: #ffb700;
-  }
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>TARS // NEXUS CORE</title>
+  <style>
+    @import url('https://fonts.googleapis.com/css2?family=Share+Tech+Mono&family=Rajdhani:wght@500;700&display=swap');
 
-  * { box-sizing: border-box; margin: 0; padding: 0; }
-  
-  body { 
-    background: var(--bg); color: var(--text-main); 
-    font-family: 'Share Tech Mono', monospace; 
-    overflow: hidden; width: 100vw; height: 100vh; 
-  }
+    :root {
+      --bg: #040609;
+      --panel-bg: rgba(8, 12, 18, 0.85);
+      --panel-border: rgba(0, 229, 255, 0.2);
+      --text-main: #e0e6ed;
+      --text-dim: #6b8299;
+      --cyan: #00e5ff;
+      --magenta: #ff00ff;
+      --green: #39ff14;
+      --orange: #ffb700;
+    }
 
-  /* --- CANVAS LAYERS --- */
-  canvas { position: absolute; top: 0; left: 0; }
-  #c-bg { z-index: 1; }
-  #c-main { z-index: 2; }
-  #c-fx { z-index: 3; pointer-events: none; mix-blend-mode: screen; }
+    * {
+      box-sizing: border-box;
+      margin: 0;
+      padding: 0;
+    }
 
-  #scanlines {
-    position: absolute; inset: 0; z-index: 4; pointer-events: none;
-    background: repeating-linear-gradient(0deg, transparent, transparent 2px, rgba(0,229,255,0.02) 2px, rgba(0,229,255,0.02) 4px);
-  }
+    body {
+      background: var(--bg);
+      color: var(--text-main);
+      font-family: 'Share Tech Mono', monospace;
+      overflow: hidden;
+      width: 100vw;
+      height: 100vh;
+    }
 
-  /* --- UI OVERLAY --- */
-  #ui-layer { position: absolute; inset: 0; z-index: 10; display: flex; flex-direction: column; pointer-events: none; }
-  .interactive { pointer-events: auto; }
+    /* --- CANVAS LAYERS --- */
+    canvas {
+      position: absolute;
+      top: 0;
+      left: 0;
+    }
 
-  /* Top Header */
-  header { 
-    display: flex; justify-content: space-between; align-items: center; 
-    padding: 15px 30px; border-bottom: 1px solid var(--panel-border);
-    background: linear-gradient(to bottom, rgba(0,0,0,0.9), transparent);
-  }
-  .brand { font-family: 'Rajdhani', sans-serif; font-size: 24px; font-weight: 700; letter-spacing: 3px; }
-  .brand span { color: var(--cyan); text-shadow: 0 0 10px var(--cyan); }
-  .stats { display: flex; gap: 40px; font-family: 'Rajdhani', sans-serif; font-size: 12px; font-weight: 700; }
-  .stats .val { display: block; font-size: 18px; margin-top: 2px; }
-  .cog-state { color: var(--orange); text-shadow: 0 0 10px var(--orange); }
+    #c-bg {
+      z-index: 1;
+    }
 
-  /* Nav Tabs */
-  .sub-nav {
-    display: flex; gap: 30px; padding: 12px 30px; border-bottom: 1px solid var(--panel-border);
-    font-family: 'Rajdhani', sans-serif; font-size: 13px; font-weight: 700; text-transform: uppercase;
-  }
-  .nav-item { display: flex; align-items: center; gap: 8px; color: var(--text-dim); }
-  .nav-item.active { color: white; border-bottom: 2px solid var(--cyan); padding-bottom: 10px; margin-bottom: -12px;}
-  .dot { width: 8px; height: 8px; border-radius: 50%; background: var(--text-dim); }
-  .nav-item.active .dot { background: var(--magenta); box-shadow: 0 0 10px var(--magenta); }
+    #c-main {
+      z-index: 2;
+    }
 
-  /* Middle Area (Floating Right Panel) */
-  .middle-area { flex: 1; position: relative; padding: 20px; }
-  .telemetry {
-    position: absolute; top: 20px; right: 20px; width: 320px;
-    background: var(--panel-bg); backdrop-filter: blur(12px);
-    border: 1px solid var(--panel-border); border-radius: 6px; padding: 20px;
-    box-shadow: 0 0 30px rgba(0,0,0,0.8);
-  }
-  .telemetry h3 { font-family: 'Rajdhani', sans-serif; font-size: 12px; color: var(--text-dim); margin-bottom: 15px; text-transform: uppercase;}
-  .tel-log { font-size: 10px; color: var(--text-dim); line-height: 2; }
-  .tel-log span { color: var(--text-main); }
+    #c-fx {
+      z-index: 3;
+      pointer-events: auto;
+      mix-blend-mode: screen;
+    }
 
-  /* Bottom Widgets */
-  .bottom-dock {
-    display: grid; grid-template-columns: 1.2fr 1.5fr 1fr 280px; gap: 15px;
-    padding: 0 20px 20px 20px; height: 240px;
-  }
-  .widget {
-    background: var(--panel-bg); backdrop-filter: blur(12px);
-    border: 1px solid var(--panel-border); border-radius: 6px; padding: 18px;
-    display: flex; flex-direction: column; box-shadow: 0 0 30px rgba(0,0,0,0.8);
-  }
-  .widget h4 { font-family: 'Rajdhani', sans-serif; font-size: 16px; margin-bottom: 15px; color: white;}
-  
-  /* Tables & Text */
-  table { width: 100%; border-collapse: collapse; font-size: 10px; text-align: left; }
-  th { color: var(--text-dim); padding-bottom: 8px; border-bottom: 1px solid rgba(255,255,255,0.05); font-weight: normal;}
-  td { padding: 8px 0; color: var(--text-main); border-bottom: 1px solid rgba(255,255,255,0.02);}
-  td.num { color: var(--cyan); }
-  .console { color: #17a66f; font-size: 9px; line-height: 1.8; overflow: hidden; }
-  .console span { color: var(--text-dim); }
+    #scanlines {
+      position: absolute;
+      inset: 0;
+      z-index: 4;
+      pointer-events: none;
+      background: repeating-linear-gradient(0deg, transparent, transparent 2px, rgba(0, 229, 255, 0.02) 2px, rgba(0, 229, 255, 0.02) 4px);
+    }
 
-  /* Charts */
-  .chart-area { flex: 1; position: relative; border-bottom: 1px solid var(--panel-border); border-left: 1px solid var(--panel-border); margin-left: 20px;}
-  .chart-labels { position: absolute; left: -20px; top: 0; bottom: 0; display: flex; flex-direction: column; justify-content: space-between; font-size: 8px; color: var(--text-dim); }
+    /* --- UI OVERLAY --- */
+    #ui-layer {
+      position: absolute;
+      inset: 0;
+      z-index: 10;
+      display: flex;
+      flex-direction: column;
+      pointer-events: none;
+    }
 
-</style>
+    .interactive {
+      pointer-events: auto;
+    }
+
+    /* Top Header */
+    header {
+      display: flex;
+      justify-content: space-between;
+      align-items: center;
+      padding: 15px 30px;
+      border-bottom: 1px solid var(--panel-border);
+      background: linear-gradient(to bottom, rgba(0, 0, 0, 0.9), transparent);
+    }
+
+    .brand {
+      font-family: 'Rajdhani', sans-serif;
+      font-size: 24px;
+      font-weight: 700;
+      letter-spacing: 3px;
+    }
+
+    .brand span {
+      color: var(--cyan);
+      text-shadow: 0 0 10px var(--cyan);
+    }
+
+    .stats {
+      display: flex;
+      gap: 40px;
+      font-family: 'Rajdhani', sans-serif;
+      font-size: 12px;
+      font-weight: 700;
+    }
+
+    .stats .val {
+      display: block;
+      font-size: 18px;
+      margin-top: 2px;
+    }
+
+    .cog-state {
+      color: var(--orange);
+      text-shadow: 0 0 10px var(--orange);
+    }
+
+    /* Nav Tabs */
+    .sub-nav {
+      display: flex;
+      gap: 30px;
+      padding: 12px 30px;
+      border-bottom: 1px solid var(--panel-border);
+      font-family: 'Rajdhani', sans-serif;
+      font-size: 13px;
+      font-weight: 700;
+      text-transform: uppercase;
+    }
+
+    .nav-item {
+      display: flex;
+      align-items: center;
+      gap: 8px;
+      color: var(--text-dim);
+    }
+
+    .nav-item.active {
+      color: white;
+      border-bottom: 2px solid var(--cyan);
+      padding-bottom: 10px;
+      margin-bottom: -12px;
+    }
+
+    .dot {
+      width: 8px;
+      height: 8px;
+      border-radius: 50%;
+      background: var(--text-dim);
+    }
+
+    .nav-item.active .dot {
+      background: var(--magenta);
+      box-shadow: 0 0 10px var(--magenta);
+    }
+
+    /* Middle Area (Floating Right Panel) */
+    .middle-area {
+      flex: 1;
+      position: relative;
+      padding: 20px;
+    }
+
+    .telemetry {
+      position: absolute;
+      top: 20px;
+      right: 20px;
+      width: 320px;
+      background: var(--panel-bg);
+      backdrop-filter: blur(12px);
+      border: 1px solid var(--panel-border);
+      border-radius: 6px;
+      padding: 20px;
+      box-shadow: 0 0 30px rgba(0, 0, 0, 0.8);
+    }
+
+    .telemetry h3 {
+      font-family: 'Rajdhani', sans-serif;
+      font-size: 12px;
+      color: var(--text-dim);
+      margin-bottom: 15px;
+      text-transform: uppercase;
+    }
+
+    .tel-log {
+      font-size: 10px;
+      color: var(--text-dim);
+      line-height: 2;
+    }
+
+    .tel-log span {
+      color: var(--text-main);
+    }
+
+    /* Bottom Widgets */
+    .bottom-dock {
+      display: grid;
+      grid-template-columns: 1.2fr 1.5fr 1fr 280px;
+      gap: 15px;
+      padding: 0 20px 20px 20px;
+      height: 240px;
+    }
+
+    .widget {
+      background: var(--panel-bg);
+      backdrop-filter: blur(12px);
+      border: 1px solid var(--panel-border);
+      border-radius: 6px;
+      padding: 18px;
+      display: flex;
+      flex-direction: column;
+      box-shadow: 0 0 30px rgba(0, 0, 0, 0.8);
+    }
+
+    .widget h4 {
+      font-family: 'Rajdhani', sans-serif;
+      font-size: 16px;
+      margin-bottom: 15px;
+      color: white;
+    }
+
+    /* Tables & Text */
+    table {
+      width: 100%;
+      border-collapse: collapse;
+      font-size: 10px;
+      text-align: left;
+    }
+
+    th {
+      color: var(--text-dim);
+      padding-bottom: 8px;
+      border-bottom: 1px solid rgba(255, 255, 255, 0.05);
+      font-weight: normal;
+    }
+
+    td {
+      padding: 8px 0;
+      color: var(--text-main);
+      border-bottom: 1px solid rgba(255, 255, 255, 0.02);
+    }
+
+    td.num {
+      color: var(--cyan);
+    }
+
+    .console {
+      color: #17a66f;
+      font-size: 9px;
+      line-height: 1.8;
+      overflow: hidden;
+    }
+
+    .console span {
+      color: var(--text-dim);
+    }
+
+    /* Charts */
+    .chart-area {
+      flex: 1;
+      position: relative;
+      border-bottom: 1px solid var(--panel-border);
+      border-left: 1px solid var(--panel-border);
+      margin-left: 20px;
+    }
+
+    .chart-labels {
+      position: absolute;
+      left: -20px;
+      top: 0;
+      bottom: 0;
+      display: flex;
+      flex-direction: column;
+      justify-content: space-between;
+      font-size: 8px;
+      color: var(--text-dim);
+    }
+  </style>
 </head>
+
 <body>
 
-<canvas id="c-bg"></canvas>
-<canvas id="c-main"></canvas>
-<canvas id="c-fx"></canvas>
-<div id="scanlines"></div>
+  <canvas id="c-bg"></canvas>
+  <canvas id="c-main"></canvas>
+  <canvas id="c-fx"></canvas>
+  <div id="scanlines"></div>
 
-<div id="ui-layer">
-  <header>
-    <div class="brand">TARS // <span>NEXUS CORE</span></div>
-    <div class="stats">
-      <div>CPU<span class="val">14%</span></div>
-      <div>RAM<span class="val">28%</span></div>
-      <div>NEURAL STRESS<span class="val">2%</span></div>
-      <div style="color:var(--text-dim);">COGNITIVE STATE:<span class="val cog-state">CURIOUS</span></div>
-    </div>
-  </header>
-
-  <div class="sub-nav">
-    <div class="nav-item active"><div class="dot" style="background:var(--cyan); box-shadow: 0 0 10px var(--cyan);"></div> Brain Explorer</div>
-    <div class="nav-item"><div class="dot" style="background:none; border: 1px solid gray;"></div> Knowledge Graph</div>
-    <div class="nav-item"><div class="dot" style="background:var(--magenta);"></div> Memories</div>
-    <div class="nav-item"><div class="dot" style="border-radius:2px;"></div> Mood</div>
-    <div class="nav-item"><div class="dot"></div> Modes</div>
-    <div class="nav-item"><div class="dot" style="border-radius:2px;"></div> Playground</div>
-  </div>
-
-  <div class="middle-area">
-    <div class="telemetry interactive">
-      <h3>NEURAL TELEMETRY ></h3>
-      <div class="tel-log" style="border-bottom: 1px solid var(--panel-border); padding-bottom: 10px; margin-bottom: 10px;">
-        Target <span>STANDBY</span>
+  <div id="ui-layer">
+    <header>
+      <div class="brand">TARS // <span>NEXUS CORE</span></div>
+      <div class="stats">
+        <div>CPU<span class="val">__CPU__%</span></div>
+        <div>RAM<span class="val">__RAM__%</span></div>
+        <div>NEURAL STRESS<span class="val">__STRESS__%</span></div>
+        <div style="color:var(--text-dim);">COGNITIVE STATE:<span class="val cog-state">__STATE__</span></div>
+        <div style="color:var(--text-dim); font-size: 9px; opacity: 0.5;">__UPDATED__</div>
       </div>
-      <div class="tel-log">
-        METADATA INJECTED<br>
-        AWAITING UPLINK TO TICKER 59... SUCCESS...<br>
-        > SYNAPTIC FIRING RATE: <span id="fire-rate">0</span>/s
-      </div>
-    </div>
-  </div>
+    </header>
 
-  <div class="bottom-dock interactive">
-    <div class="widget">
-      <h4>Knowledge Graph</h4>
-      <table>
-        <tr><th>Fact</th><th>Range</th><th>Object</th><th>Certainty</th></tr>
-        <tr><td>Traits</td><td>10</td><td class="num">28.985</td><td></td></tr>
-        <tr><td>Contexts</td><td>0</td><td class="num">23.978</td><td></td></tr>
-        <tr><td>Classifications</td><td>169</td><td class="num">50.003</td><td></td></tr>
-        <tr><td>Concepts</td><td>300</td><td class="num">28.985</td><td></td></tr>
-        <tr><td>Abstract Node</td><td>500</td><td class="num">92.059</td><td></td></tr>
-      </table>
-    </div>
-    
-    <div class="widget">
-      <h4>Real-time console</h4>
-      <div class="console">
-        <span>> [TARS_CORE]</span> Injecting data streams to [Memory event] Trait matrix bound...<br>
-        <span>> </span> Abstracting trait definitions [0.0881]<br>
-        <span>> </span> Syncing cognitive node streams [Success 0.91]<br>
-        <span>> [ROUTING]</span> Target mapped: Abstract node set [0.004]<br>
-        <span>> [TARS_CORE]</span> Executing semantic mapping...<br>
-        <span>> </span> Connecting TARS node data [0.999]<br>
-        <span>> [SYSTEM]</span> Uplink established. Waiting instructions...
+    <div class="sub-nav">
+      <div class="nav-item active">
+        <div class="dot" style="background:var(--cyan); box-shadow: 0 0 10px var(--cyan);"></div> Brain Explorer
+      </div>
+      <div class="nav-item">
+        <div class="dot" style="background:none; border: 1px solid gray;"></div> Knowledge Graph
+      </div>
+      <div class="nav-item">
+        <div class="dot" style="background:var(--magenta);"></div> Memories
+      </div>
+      <div class="nav-item">
+        <div class="dot" style="border-radius:2px;"></div> Mood
+      </div>
+      <div class="nav-item">
+        <div class="dot"></div> Modes
+      </div>
+      <div class="nav-item">
+        <div class="dot" style="border-radius:2px;"></div> Playground
       </div>
     </div>
 
-    <div class="widget">
-      <h4>Mood charts</h4>
-      <div style="display:flex; flex:1; padding-top: 10px;">
-        <div class="chart-area">
-          <div class="chart-labels"><span>50</span><span>25</span><span>0</span><span>-25</span><span>-50</span></div>
-          <svg width="100%" height="100%" preserveAspectRatio="none" viewBox="0 0 100 100">
-            <path d="M0,80 Q25,90 50,50 T100,60" fill="none" stroke="#ff00ff" stroke-width="2" style="filter: drop-shadow(0 0 4px #ff00ff);"/>
-            <path d="M0,95 Q25,60 50,80 T100,90" fill="none" stroke="#00e5ff" stroke-width="2" style="filter: drop-shadow(0 0 4px #00e5ff);"/>
-            <path d="M0,95 Q25,60 50,80 T100,90 L100,100 L0,100 Z" fill="rgba(0, 229, 255, 0.1)" stroke="none"/>
-          </svg>
+    <div class="middle-area">
+      <div class="telemetry interactive">
+        <h3>NEURAL TELEMETRY ></h3>
+        <div class="tel-log" id="tel-target"
+          style="border-bottom: 1px solid var(--panel-border); padding-bottom: 10px; margin-bottom: 10px;">
+          Target <span id="tel-target-name">STANDBY</span>
+        </div>
+        <div class="tel-log" id="tel-data"
+          style="max-height: 200px; overflow-y: auto; white-space: pre-wrap; word-break: break-word; font-size: 10px; line-height: 1.5; color: var(--cyan);">
+          Click a node to inspect…
+        </div>
+        <div class="tel-log" style="margin-top: 10px; border-top: 1px solid var(--panel-border); padding-top: 8px;">
+          > SYNAPTIC FIRING RATE: <span id="fire-rate">__SYNAPTIC_RATE__</span>/s
+        </div>
+        <div style="display: flex; gap: 6px; margin-top: 10px;">
+          <button class="filter-btn active" data-filter="ALL" onclick="setFilter(this)">ALL</button>
+          <button class="filter-btn" data-filter="DAY" onclick="setFilter(this)">DAY</button>
+          <button class="filter-btn" data-filter="WEEK" onclick="setFilter(this)">WEEK</button>
+          <button class="filter-btn" data-filter="MONTH" onclick="setFilter(this)">MONTH</button>
         </div>
       </div>
     </div>
 
-    <div class="widget">
-      <h4 style="font-size:12px; color:var(--text-dim); margin-bottom:8px;">Local Model selector</h4>
-      <div style="background:#0b111a; border:1px solid var(--panel-border); color:var(--cyan); padding:10px; border-radius:4px; font-size:12px; margin-bottom:20px;">OpenChat 3.5</div>
-      <h4 style="font-size:12px; color:var(--text-dim); margin-bottom:8px;">Chroma preview</h4>
-      <div style="background:#0b111a; border:1px solid var(--panel-border); padding:12px; border-radius:4px; display:flex; justify-content:space-between; align-items:center;">
-        <span style="font-size:11px; color:var(--text-dim);">Ambient/system</span>
-        <div style="width:18px; height:18px; background:var(--green); border-radius:3px; box-shadow: 0 0 10px var(--green);"></div>
+    <div class="bottom-dock interactive">
+      <div class="widget">
+        <h4>Knowledge Graph</h4>
+        <table>
+          <tr>
+            <th>Fact</th>
+            <th>Predicate</th>
+            <th>Object</th>
+            <th>Condition</th>
+          </tr>
+          __FACTS_TABLE__
+        </table>
+      </div>
+
+      <div class="widget">
+        <h4>Real-time console</h4>
+        <div class="console">
+          __CONSOLE_OUTPUT__
+        </div>
+      </div>
+
+      <div class="widget">
+        <h4>Mood charts</h4>
+        <div style="display:flex; flex:1; padding-top: 10px;">
+          <div class="chart-area">
+            <div class="chart-labels"><span>50</span><span>25</span><span>0</span><span>-25</span><span>-50</span></div>
+            <svg width="100%" height="100%" preserveAspectRatio="none" viewBox="0 0 100 100">
+              <path d="__VALENCE_PATH__" fill="none" stroke="#ff00ff" stroke-width="2"
+                style="filter: drop-shadow(0 0 4px #ff00ff);" />
+              <path d="__AROUSAL_PATH__" fill="none" stroke="#00e5ff" stroke-width="2"
+                style="filter: drop-shadow(0 0 4px #00e5ff);" />
+              <path d="__AROUSAL_FILL_PATH__" fill="rgba(0, 229, 255, 0.1)" stroke="none" />
+            </svg>
+          </div>
+        </div>
+      </div>
+
+      <div class="widget">
+        <h4 style="font-size:12px; color:var(--text-dim); margin-bottom:8px;">Local Model selector</h4>
+        <div
+          style="background:#0b111a; border:1px solid var(--panel-border); color:var(--cyan); padding:10px; border-radius:4px; font-size:12px; margin-bottom:20px;">
+          OpenChat 3.5</div>
+        <h4 style="font-size:12px; color:var(--text-dim); margin-bottom:8px;">Chroma preview</h4>
+        <div
+          style="background:#0b111a; border:1px solid var(--panel-border); padding:12px; border-radius:4px; display:flex; justify-content:space-between; align-items:center;">
+          <span style="font-size:11px; color:var(--text-dim);">Ambient/system</span>
+          <div
+            style="width:18px; height:18px; background:var(--green); border-radius:3px; box-shadow: 0 0 10px var(--green);">
+          </div>
+        </div>
       </div>
     </div>
   </div>
-</div>
 
-<script>
-// ═══════════════════════════════════════════════════════════════════
-// 3D ISOMETRIC CANVAS ENGINE
-// ═══════════════════════════════════════════════════════════════════
-const cbg = document.getElementById('c-bg');
-const cmain = document.getElementById('c-main');
-const cfx = document.getElementById('c-fx');
-const bg = cbg.getContext('2d');
-const ctx = cmain.getContext('2d');
-const fx = cfx.getContext('2d');
-let W, H, cx, cy;
-const ISO_Y = 0.55; // The 3D tilt factor
-
-function resize() {
-  [cbg, cmain, cfx].forEach(c => { c.width = window.innerWidth; c.height = window.innerHeight; });
-  W = window.innerWidth; H = window.innerHeight;
-  cx = W / 2; cy = H / 2 - 50; 
-}
-window.addEventListener('resize', resize);
-resize();
-
-// --- HARDCODED 3D LAYOUT (Matches original image exactly) ---
-const layout = {
-  hubs: [
-    { id: 'cog', x: -100, y: -180, r: 24, h: 60, hue: 300, label: 'COGNITIVE CORE' }, // Magenta Top
-    { id: 'usr1', x: -180, y: 20, r: 20, h: 40, hue: 190, label: 'USER/LLM' },        // Cyan Left
-    { id: 'mem', x: 20, y: -20, r: 20, h: 40, hue: 300, label: 'memories' },          // Magenta Center
-    { id: 'usr2', x: -60, y: 180, r: 20, h: 40, hue: 190, label: 'USER/LLM' },        // Cyan Bottom
-    { id: 'tars', x: 180, y: 80, r: 28, h: 70, hue: 38, label: 'TARS_KNOWLEDGE' },    // Orange Right
-    { id: 'cyan_tr', x: 180, y: -180, r: 24, h: 60, hue: 190, label: '' }             // Cyan Top Right
-  ],
-  matrices: [
-    { startX: 120, startY: -100, rows: 4, cols: 5, spacing: 25, hue: 120, parent: 'cyan_tr' }, // Green TR
-    { startX: 20, startY: 180, rows: 4, cols: 5, spacing: 25, hue: 120, parent: 'tars' },      // Green BR
-    { startX: -240, startY: -140, rows: 4, cols: 2, spacing: 20, hue: 38, parent: 'cog' }      // Orange TL
-  ],
-  links: [
-    ['cog', 'mem'], ['cog', 'usr1'], ['cog', 'tars'], ['cog', 'cyan_tr'],
-    ['mem', 'usr1'], ['mem', 'usr2'], ['mem', 'tars'],
-    ['usr1', 'usr2'], ['tars', 'cyan_tr']
-  ]
-};
-
-// Generate Matrix Nodes
-let matrixNodes = [];
-layout.matrices.forEach(m => {
-  for (let r = 0; r < m.rows; r++) {
-    for (let c = 0; c < m.cols; c++) {
-      const nx = m.startX + (c * m.spacing) - (r * m.spacing * 0.5);
-      const ny = m.startY + (r * m.spacing) + (c * m.spacing);
-      matrixNodes.push({ x: nx, y: ny, r: 6, h: 12, hue: m.hue, parent: m.parent, wobble: Math.random() * Math.PI * 2 });
+  <style>
+    .filter-btn {
+      background: rgba(0, 229, 255, 0.08);
+      border: 1px solid rgba(0, 229, 255, 0.25);
+      color: var(--text-dim);
+      font-family: 'Share Tech Mono', monospace;
+      font-size: 10px;
+      padding: 4px 10px;
+      border-radius: 4px;
+      cursor: pointer;
+      letter-spacing: 1px;
+      transition: all 0.2s;
     }
-  }
-});
 
-let fireQueue = [];
-let fireCount = 0;
-
-// --- RENDER FUNCTIONS ---
-function hsl(h, s, l, a = 1) { return `hsla(${h},${s}%,${l}%,${a})`; }
-
-function draw3DPillar(n, t) {
-  const { x, y, r, h, hue, label } = n;
-  const ry = r * ISO_Y;
-  const pulse = 0.8 + Math.sin(t * 2 + x) * 0.2;
-  const fire = n.fireAmt || 0;
-  if(n.fireAmt > 0) n.fireAmt = Math.max(0, n.fireAmt - 0.03);
-
-  ctx.save();
-  // Aura
-  const aura = ctx.createRadialGradient(x, y - h/2, 0, x, y - h/2, r * 5);
-  aura.addColorStop(0, hsl(hue, 100, 50, 0.15 * pulse + fire * 0.3));
-  aura.addColorStop(1, 'transparent');
-  ctx.fillStyle = aura;
-  ctx.beginPath(); ctx.ellipse(x, y - h/2, r * 4, ry * 4 + h/2, 0, 0, Math.PI * 2); ctx.fill();
-
-  // Cylinder Body
-  const bodyGrd = ctx.createLinearGradient(x, y, x, y - h);
-  bodyGrd.addColorStop(0, 'rgba(0,0,0,0.8)');
-  bodyGrd.addColorStop(0.5, hsl(hue, 90, 50, 0.8));
-  bodyGrd.addColorStop(1, hsl(hue, 100, 80, 0.9));
-  
-  ctx.globalAlpha = 0.9;
-  ctx.beginPath();
-  ctx.moveTo(x - r, y); ctx.lineTo(x - r, y - h);
-  ctx.ellipse(x, y - h, r, ry, 0, Math.PI, 0); 
-  ctx.lineTo(x + r, y);
-  ctx.ellipse(x, y, r, ry, 0, 0, Math.PI); 
-  ctx.fillStyle = bodyGrd; ctx.fill();
-
-  // Top Cap Lens Flare
-  ctx.beginPath(); ctx.ellipse(x, y - h, r, ry, 0, 0, Math.PI * 2);
-  ctx.fillStyle = '#fff'; ctx.shadowBlur = 20 + fire * 20; ctx.shadowColor = hsl(hue, 100, 60); ctx.fill();
-  
-  // Teardrop Flame (Hubs only)
-  if (r > 10) {
-    const fh = r * 3; const fw = r * 0.8;
-    ctx.globalAlpha = 0.6 * pulse;
-    const flameGrd = ctx.createLinearGradient(x, y - h, x, y - h - fh);
-    flameGrd.addColorStop(0, hsl(hue, 100, 70, 0.9));
-    flameGrd.addColorStop(1, 'transparent');
-    ctx.fillStyle = flameGrd;
-    ctx.beginPath();
-    ctx.moveTo(x, y - h);
-    ctx.bezierCurveTo(x + fw, y - h - fh*0.4, x + fw*0.4, y - h - fh*0.8, x, y - h - fh);
-    ctx.bezierCurveTo(x - fw*0.4, y - h - fh*0.8, x - fw, y - h - fh*0.4, x, y - h);
-    ctx.fill();
-  }
-
-  // Label
-  if (label) {
-    ctx.globalAlpha = 0.9;
-    ctx.font = 'bold 11px "Share Tech Mono"';
-    ctx.fillStyle = hsl(hue, 80, 80);
-    ctx.shadowBlur = 5; ctx.shadowColor = '#000';
-    ctx.textAlign = 'center';
-    ctx.fillText(label, x, y + 25);
-  }
-  ctx.restore();
-}
-
-function drawSynapseEdge(x1, y1, x2, y2, hue) {
-  ctx.save();
-  ctx.strokeStyle = hsl(hue, 80, 60, 0.2);
-  ctx.lineWidth = 1;
-  ctx.beginPath(); ctx.moveTo(x1, y1); ctx.lineTo(x2, y2); ctx.stroke();
-  ctx.restore();
-}
-
-function scheduleFire() {
-  if(Math.random() < 0.1) {
-    const link = layout.links[Math.floor(Math.random() * layout.links.length)];
-    const h1 = layout.hubs.find(h => h.id === link[0]);
-    const h2 = layout.hubs.find(h => h.id === link[1]);
-    fireQueue.push({ p1: h1, p2: h2, progress: 0, speed: 0.02 + Math.random() * 0.02 });
-    fireCount++;
-    document.getElementById('fire-rate').innerText = Math.floor(fireCount / 2); // Fake smooth counter
-  }
-}
-
-function drawMembraneBoundary(t) {
-  bg.clearRect(0,0,W,H);
-  bg.save();
-  bg.beginPath();
-  const radius = Math.min(W, H) * 0.4;
-  for (let i = 0; i < Math.PI * 2; i += 0.1) {
-    const noise = Math.sin(t*0.5 + i*3) * 20 + Math.cos(t*0.3 + i*5) * 15;
-    const px = cx + Math.cos(i) * (radius + noise);
-    const py = cy + Math.sin(i) * ((radius * ISO_Y) + noise * ISO_Y);
-    if (i === 0) bg.moveTo(px, py); else bg.lineTo(px, py);
-  }
-  bg.closePath();
-  bg.strokeStyle = 'rgba(0, 229, 255, 0.4)';
-  bg.lineWidth = 3;
-  bg.shadowBlur = 25; bg.shadowColor = '#00e5ff';
-  bg.stroke();
-  
-  // Inner Nebula Fill
-  const neb = bg.createRadialGradient(cx, cy, 0, cx, cy, radius);
-  neb.addColorStop(0, 'rgba(0, 20, 40, 0.6)');
-  neb.addColorStop(1, 'transparent');
-  bg.fillStyle = neb; bg.fill();
-  bg.restore();
-}
-
-// --- MAIN LOOP ---
-const t0 = performance.now();
-function loop(now) {
-  requestAnimationFrame(loop);
-  const t = (now - t0) / 1000;
-  
-  ctx.clearRect(0, 0, W, H);
-  fx.clearRect(0, 0, W, H);
-
-  drawMembraneBoundary(t);
-  
-  const floatX = Math.sin(t * 0.5) * 5;
-  const floatY = Math.cos(t * 0.4) * 3;
-
-  // Draw Edges
-  matrixNodes.forEach(mn => {
-    const parent = layout.hubs.find(h => h.id === mn.parent);
-    if (parent) drawSynapseEdge(cx + parent.x + floatX, cy + parent.y * ISO_Y + floatY, cx + mn.x + floatX, cy + mn.y * ISO_Y + floatY, mn.hue);
-  });
-
-  layout.links.forEach(link => {
-    const h1 = layout.hubs.find(h => h.id === link[0]);
-    const h2 = layout.hubs.find(h => h.id === link[1]);
-    drawSynapseEdge(cx + h1.x + floatX, cy + h1.y * ISO_Y + floatY, cx + h2.x + floatX, cy + h2.y * ISO_Y + floatY, h1.hue);
-  });
-
-  // Draw Fire Pulses
-  scheduleFire();
-  let alive = [];
-  fireQueue.forEach(f => {
-    f.progress += f.speed;
-    if (f.progress >= 1) {
-      f.p2.fireAmt = 1; // Trigger impact flare
-      return; 
+    .filter-btn:hover {
+      border-color: var(--cyan);
+      color: var(--cyan);
     }
-    alive.push(f);
-    const px = cx + f.p1.x + (f.p2.x - f.p1.x) * f.progress + floatX;
-    const py = cy + (f.p1.y + (f.p2.y - f.p1.y) * f.progress) * ISO_Y + floatY;
-    
-    fx.save();
-    fx.globalAlpha = 0.9; fx.fillStyle = '#fff';
-    fx.shadowBlur = 15; fx.shadowColor = hsl(f.p1.hue, 100, 60);
-    fx.beginPath(); fx.arc(px, py, 3, 0, Math.PI * 2); fx.fill();
-    fx.restore();
-  });
-  fireQueue = alive;
 
-  // Draw Nodes (Sorted by Y for 3D depth)
-  const allNodes = [
-    ...layout.hubs.map(h => ({...h, isHub: true})), 
-    ...matrixNodes.map(m => ({...m, isHub: false}))
-  ];
-  
-  allNodes.sort((a,b) => (a.y * ISO_Y) - (b.y * ISO_Y)).forEach(n => {
-    draw3DPillar({
-      ...n, 
-      x: cx + n.x + floatX, 
-      y: cy + n.y * ISO_Y + floatY + (n.isHub ? 0 : Math.sin(t*3 + n.wobble)*2) // Little matrix bobble
-    }, t);
-  });
-}
+    .filter-btn.active {
+      background: rgba(0, 229, 255, 0.2);
+      color: var(--cyan);
+      border-color: var(--cyan);
+      box-shadow: 0 0 8px rgba(0, 229, 255, 0.3);
+    }
+  </style>
 
-// Start
-requestAnimationFrame(loop);
-setInterval(() => fireCount = 0, 1000); // Reset fake counter
-</script>
+  <script>
+    // ═══════════════════════════════════════════════════════════════════
+    // 3D ISOMETRIC CANVAS ENGINE — WITH PAN / ZOOM / CLICK
+    // ═══════════════════════════════════════════════════════════════════
+    const cbg = document.getElementById('c-bg');
+    const cmain = document.getElementById('c-main');
+    const cfx = document.getElementById('c-fx');
+    const bg = cbg.getContext('2d');
+    const ctx = cmain.getContext('2d');
+    const fx = cfx.getContext('2d');
+    let W, H;
+    const ISO_Y = 0.55;
+
+    // Camera state
+    let camX = 0, camY = 0, zoom = 0.55;
+    let isDragging = false, dragStartX = 0, dragStartY = 0, camStartX = 0, camStartY = 0;
+
+    function resize() {
+      [cbg, cmain, cfx].forEach(c => { c.width = window.innerWidth; c.height = window.innerHeight; });
+      W = window.innerWidth; H = window.innerHeight;
+    }
+    window.addEventListener('resize', resize);
+    resize();
+
+    // --- PAN (drag) ---
+    cfx.addEventListener('mousedown', e => {
+      isDragging = true; dragStartX = e.clientX; dragStartY = e.clientY;
+      camStartX = camX; camStartY = camY; cfx.style.cursor = 'grabbing';
+    });
+    window.addEventListener('mousemove', e => {
+      if (!isDragging) return;
+      camX = camStartX + (e.clientX - dragStartX) / zoom;
+      camY = camStartY + (e.clientY - dragStartY) / zoom;
+    });
+    window.addEventListener('mouseup', () => { isDragging = false; cfx.style.cursor = 'grab'; });
+
+    // --- ZOOM (scroll wheel) ---
+    cfx.addEventListener('wheel', e => {
+      e.preventDefault();
+      const factor = e.deltaY < 0 ? 1.12 : 0.88;
+      zoom = Math.max(0.1, Math.min(4.0, zoom * factor));
+    }, { passive: false });
+    cfx.style.cursor = 'grab';
+
+    // --- CLICK (inspect node) ---
+    cfx.addEventListener('click', e => {
+      if (Math.abs(e.clientX - dragStartX) > 5 || Math.abs(e.clientY - dragStartY) > 5) return;
+      const mx = e.clientX, my = e.clientY;
+      const ox = W / 2 + camX * zoom, oy = H / 2 - 50 + camY * zoom;
+      for (let i = layout.hubs.length - 1; i >= 0; i--) {
+        const h = layout.hubs[i];
+        const sx = ox + h.x * zoom, sy = oy + (h.y * ISO_Y) * zoom;
+        const hr = h.r * zoom;
+        const dx = mx - sx, dy = my - sy;
+        if (dx * dx + dy * dy < hr * hr * 6) {
+          document.getElementById('tel-target-name').textContent = h.label || h.id;
+          const metaEl = document.getElementById('tel-data');
+          if (h.meta) {
+            metaEl.textContent = h.meta.replace(/\\n/g, '\n');
+          } else {
+            metaEl.textContent = 'ID: ' + h.id + '\nLabel: ' + h.label;
+          }
+          h.fireAmt = 1.5;
+          return;
+        }
+      }
+    });
+
+    // --- FILTER BUTTONS ---
+    function setFilter(btn) {
+      document.querySelectorAll('.filter-btn').forEach(b => b.classList.remove('active'));
+      btn.classList.add('active');
+      document.getElementById('tel-data').textContent = 'Filter: ' + btn.dataset.filter + '\nReload dashboard to apply filter.';
+    }
+
+    // --- DYNAMIC LAYOUT ---
+    const layout = __GRAPH_DATA__;
+
+    // Generate Matrix Nodes
+    let matrixNodes = [];
+    layout.matrices.forEach(m => {
+      for (let r = 0; r < m.rows; r++) {
+        for (let c = 0; c < m.cols; c++) {
+          const nx = m.startX + (c * m.spacing) - (r * m.spacing * 0.5);
+          const ny = m.startY + (r * m.spacing) + (c * m.spacing);
+          matrixNodes.push({ x: nx, y: ny, r: 5, h: 10, hue: m.hue, parent: m.parent, wobble: Math.random() * Math.PI * 2 });
+        }
+      }
+    });
+
+    let fireQueue = [];
+    let fireCount = 0;
+
+    // --- RENDER FUNCTIONS ---
+    function hsl(h, s, l, a = 1) { return `hsla(${h},${s}%,${l}%,${a})`; }
+
+    function draw3DPillar(n, t) {
+      const { x, y, r, h, hue, label } = n;
+      const ry = r * ISO_Y;
+      const pulse = 0.8 + Math.sin(t * 2 + x * 0.01) * 0.2;
+      const fire = n.fireAmt || 0;
+      if (n.fireAmt > 0) n.fireAmt = Math.max(0, n.fireAmt - 0.03);
+
+      ctx.save();
+      const aura = ctx.createRadialGradient(x, y - h / 2, 0, x, y - h / 2, r * 5);
+      aura.addColorStop(0, hsl(hue, 100, 50, 0.15 * pulse + fire * 0.3));
+      aura.addColorStop(1, 'transparent');
+      ctx.fillStyle = aura;
+      ctx.beginPath(); ctx.ellipse(x, y - h / 2, r * 4, ry * 4 + h / 2, 0, 0, Math.PI * 2); ctx.fill();
+
+      const bodyGrd = ctx.createLinearGradient(x, y, x, y - h);
+      bodyGrd.addColorStop(0, 'rgba(0,0,0,0.8)');
+      bodyGrd.addColorStop(0.5, hsl(hue, 90, 50, 0.8));
+      bodyGrd.addColorStop(1, hsl(hue, 100, 80, 0.9));
+      ctx.globalAlpha = 0.9;
+      ctx.beginPath();
+      ctx.moveTo(x - r, y); ctx.lineTo(x - r, y - h);
+      ctx.ellipse(x, y - h, r, ry, 0, Math.PI, 0);
+      ctx.lineTo(x + r, y); ctx.ellipse(x, y, r, ry, 0, 0, Math.PI);
+      ctx.fillStyle = bodyGrd; ctx.fill();
+
+      ctx.beginPath(); ctx.ellipse(x, y - h, r, ry, 0, 0, Math.PI * 2);
+      ctx.fillStyle = '#fff'; ctx.shadowBlur = 20 + fire * 20; ctx.shadowColor = hsl(hue, 100, 60); ctx.fill();
+
+      if (r > 8) {
+        const fh = r * 3; const fw = r * 0.8;
+        ctx.globalAlpha = 0.6 * pulse;
+        const flameGrd = ctx.createLinearGradient(x, y - h, x, y - h - fh);
+        flameGrd.addColorStop(0, hsl(hue, 100, 70, 0.9)); flameGrd.addColorStop(1, 'transparent');
+        ctx.fillStyle = flameGrd;
+        ctx.beginPath(); ctx.moveTo(x, y - h);
+        ctx.bezierCurveTo(x + fw, y - h - fh * 0.4, x + fw * 0.4, y - h - fh * 0.8, x, y - h - fh);
+        ctx.bezierCurveTo(x - fw * 0.4, y - h - fh * 0.8, x - fw, y - h - fh * 0.4, x, y - h);
+        ctx.fill();
+      }
+
+      if (label && r > 6) {
+        ctx.globalAlpha = 0.9;
+        ctx.font = `bold ${Math.max(8, Math.round(11 * (zoom > 0.5 ? 1 : zoom * 2)))}px "Share Tech Mono"`;
+        ctx.fillStyle = hsl(hue, 80, 80); ctx.shadowBlur = 5; ctx.shadowColor = '#000';
+        ctx.textAlign = 'center'; ctx.fillText(label, x, y + r + 12);
+      }
+      ctx.restore();
+    }
+
+    function drawSynapseEdge(x1, y1, x2, y2, hue) {
+      ctx.save();
+      ctx.strokeStyle = hsl(hue, 80, 60, 0.2);
+      ctx.lineWidth = Math.max(0.5, 1 * zoom);
+      ctx.beginPath(); ctx.moveTo(x1, y1); ctx.lineTo(x2, y2); ctx.stroke();
+      ctx.restore();
+    }
+
+    function scheduleFire() {
+      if (Math.random() < 0.1 && layout.links.length > 0) {
+        const link = layout.links[Math.floor(Math.random() * layout.links.length)];
+        const h1 = layout.hubs.find(h => h.id === link[0]);
+        const h2 = layout.hubs.find(h => h.id === link[1]);
+        if (h1 && h2) {
+          fireQueue.push({ p1: h1, p2: h2, progress: 0, speed: 0.02 + Math.random() * 0.02 });
+          fireCount++;
+          const el = document.getElementById('fire-rate');
+          if (el) el.innerText = Math.floor(fireCount / 2);
+        }
+      }
+    }
+
+    function drawMembraneBoundary(t) {
+      bg.clearRect(0, 0, W, H);
+      bg.save();
+      const ox = W / 2 + camX * zoom, oy = H / 2 - 50 + camY * zoom;
+      bg.beginPath();
+      const radius = Math.min(W, H) * 0.35 * zoom;
+      for (let i = 0; i < Math.PI * 2; i += 0.1) {
+        const noise = Math.sin(t * 0.5 + i * 3) * 20 * zoom + Math.cos(t * 0.3 + i * 5) * 15 * zoom;
+        const px = ox + Math.cos(i) * (radius + noise);
+        const py = oy + Math.sin(i) * ((radius * ISO_Y) + noise * ISO_Y);
+        if (i === 0) bg.moveTo(px, py); else bg.lineTo(px, py);
+      }
+      bg.closePath();
+      bg.strokeStyle = 'rgba(0, 229, 255, 0.25)'; bg.lineWidth = 2;
+      bg.shadowBlur = 20; bg.shadowColor = '#00e5ff'; bg.stroke();
+      const neb = bg.createRadialGradient(ox, oy, 0, ox, oy, radius);
+      neb.addColorStop(0, 'rgba(0, 20, 40, 0.4)'); neb.addColorStop(1, 'transparent');
+      bg.fillStyle = neb; bg.fill();
+      bg.restore();
+    }
+
+    // --- MAIN LOOP ---
+    const t0 = performance.now();
+    function loop(now) {
+      requestAnimationFrame(loop);
+      const t = (now - t0) / 1000;
+      ctx.clearRect(0, 0, W, H);
+      fx.clearRect(0, 0, W, H);
+      drawMembraneBoundary(t);
+
+      const ox = W / 2 + camX * zoom;
+      const oy = H / 2 - 50 + camY * zoom;
+      const floatX = Math.sin(t * 0.5) * 3;
+      const floatY = Math.cos(t * 0.4) * 2;
+
+      matrixNodes.forEach(mn => {
+        const parent = layout.hubs.find(h => h.id === mn.parent);
+        if (parent) {
+          drawSynapseEdge(
+            ox + (parent.x + floatX) * zoom, oy + (parent.y * ISO_Y + floatY) * zoom,
+            ox + (mn.x + floatX) * zoom, oy + (mn.y * ISO_Y + floatY) * zoom, mn.hue);
+        }
+      });
+
+      layout.links.forEach(link => {
+        const h1 = layout.hubs.find(h => h.id === link[0]);
+        const h2 = layout.hubs.find(h => h.id === link[1]);
+        if (h1 && h2) {
+          drawSynapseEdge(
+            ox + (h1.x + floatX) * zoom, oy + (h1.y * ISO_Y + floatY) * zoom,
+            ox + (h2.x + floatX) * zoom, oy + (h2.y * ISO_Y + floatY) * zoom, h1.hue);
+        }
+      });
+
+      scheduleFire();
+      let alive = [];
+      fireQueue.forEach(f => {
+        f.progress += f.speed;
+        if (f.progress >= 1) { f.p2.fireAmt = 1; return; }
+        alive.push(f);
+        const px = ox + (f.p1.x + (f.p2.x - f.p1.x) * f.progress + floatX) * zoom;
+        const py = oy + ((f.p1.y + (f.p2.y - f.p1.y) * f.progress) * ISO_Y + floatY) * zoom;
+        fx.save(); fx.globalAlpha = 0.9; fx.fillStyle = '#fff';
+        fx.shadowBlur = 15; fx.shadowColor = hsl(f.p1.hue, 100, 60);
+        fx.beginPath(); fx.arc(px, py, 3 * zoom, 0, Math.PI * 2); fx.fill(); fx.restore();
+      });
+      fireQueue = alive;
+
+      const allNodes = [
+        ...layout.hubs.map(h => ({ ...h, isHub: true })),
+        ...matrixNodes.map(m => ({ ...m, isHub: false }))
+      ];
+      allNodes.sort((a, b) => (a.y * ISO_Y) - (b.y * ISO_Y)).forEach(n => {
+        draw3DPillar({
+          ...n,
+          x: ox + (n.x + floatX) * zoom,
+          y: oy + (n.y * ISO_Y + floatY) * zoom + (n.isHub ? 0 : Math.sin(t * 3 + n.wobble) * 2 * zoom),
+          r: n.r * zoom,
+          h: (n.h || n.r * 2) * zoom
+        }, t);
+      });
+
+      ctx.save();
+      ctx.font = '10px "Share Tech Mono"'; ctx.fillStyle = 'rgba(0,229,255,0.4)'; ctx.textAlign = 'left';
+      ctx.fillText(`NODES: ${layout.hubs.length + matrixNodes.length}  |  ZOOM: ${zoom.toFixed(2)}x  |  SCROLL TO ZOOM  |  DRAG TO PAN`, 15, H - 15);
+      ctx.restore();
+    }
+
+    requestAnimationFrame(loop);
+    setInterval(() => fireCount = 0, 1000);
+  </script>
 </body>
+
 </html>

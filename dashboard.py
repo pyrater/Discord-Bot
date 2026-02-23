@@ -235,13 +235,27 @@ if not check_password():
     st.stop()
 
 # --- PAGE CONFIG ---
-st.set_page_config(page_title="TARS Nexus Core", layout="wide", page_icon="🤖")
-st.markdown(load_css(), unsafe_allow_html=True)
+st.set_page_config(page_title="TARS Nexus Core", layout="wide", page_icon="🤖", initial_sidebar_state="collapsed")
 
-# --- DASHBOARD UI ---
-
-# Scanline Overlay (HTML injection)
-st.markdown('<div class="scanline-overlay"></div>', unsafe_allow_html=True)
+# --- STYLING: CLEAN NEXUS UI ---
+st.markdown("""
+    <style>
+    #MainMenu {visibility: hidden;}
+    header {visibility: hidden;}
+    footer {visibility: hidden;}
+    /* Pull app up slightly but keep tabs reachable */
+    .stApp { top: -60px; } 
+    #root > div:nth-child(1) > div > div > div > div > section > div {padding-top: 2rem;}
+    
+    /* Custom scanline overlay */
+    .scanline-overlay {
+        position: fixed; top: 0; left: 0; width: 100%; height: 100%;
+        background: repeating-linear-gradient(0deg, transparent, transparent 2px, rgba(0, 248, 255, 0.01) 2px, rgba(0, 248, 255, 0.01) 4px);
+        pointer-events: none; z-index: 9999;
+    }
+    </style>
+    <div class="scanline-overlay"></div>
+""", unsafe_allow_html=True)
 
 # --- DATA FETCHING ---
 @st.cache_resource
@@ -266,7 +280,7 @@ def get_tars_brain():
         lazy_load=True
     )
 
-@st.cache_data(ttl=10)
+@st.cache_data(ttl=5)
 def get_audit_logs():
     if not os.path.exists(DB_PATH): return pd.DataFrame()
     try:
@@ -333,16 +347,367 @@ charge_strength = st.session_state['charge_strength']
 grouping_mode = st.session_state['grouping_mode']
 is_spatial = (grouping_mode == "Semantic (Force)")
 
-# --- MAIN UI LAYOUT ---
-# HUD Header (Returns neural_stress for physics calc)
-neural_stress = nexus_header()
+# --- TEMPLATE RENDERING LOGIC ---
+
+def get_mood_paths(df):
+    """Generates accurate SVG paths for Valence and Arousal based on GoEmotions."""
+    if df is None or df.empty or 'mood' not in df.columns:
+        return "M0,50 L100,50", "M0,80 L100,80", "M0,80 L100,80 L100,100 L0,100 Z"
+    
+    # Mapping GoEmotions to Valence (-1 to 1) and Arousal (-1 to 1)
+    # Note: These are simplified heuristics for visualization
+    v_a_map = {
+        'joy': (0.8, 0.6), 'excitement': (0.7, 0.9), 'amusement': (0.6, 0.4), 'pride': (0.7, 0.5), 'gratitude': (0.9, 0.3),
+        'love': (0.9, 0.3), 'caring': (0.8, 0.2), 'optimism': (0.7, 0.4), 'relief': (0.6, -0.3), 'curiosity': (0.5, 0.6),
+        'approval': (0.4, 0.1), 'admiration': (0.6, 0.5), 'desire': (0.5, 0.5), 'surprise': (0.3, 0.9),
+        'neutral': (0.0, 0.0), 'realization': (0.2, 0.4), 'confusion': (-0.1, 0.4), 'curious': (0.5, 0.6),
+        'sadness': (-0.7, -0.4), 'grief': (-0.9, -0.5), 'remorse': (-0.6, -0.2), 'disappointment': (-0.6, -0.1),
+        'annoyance': (-0.4, 0.4), 'anger': (-0.8, 0.8), 'disgust': (-0.7, 0.5), 'fear': (-0.6, 0.9),
+        'nervousness': (-0.3, 0.7), 'disapproval': (-0.4, 0.2), 'embarrassment': (-0.3, 0.4)
+    }
+
+    recent_moods = df['mood'].tail(20).tolist()
+    points_v = []
+    points_a = []
+    
+    for i, m_str in enumerate(recent_moods):
+        # Extract first word as emotion
+        m = m_str.split('(')[0].strip().lower()
+        v, a = v_a_map.get(m, (0.0, 0.0))
+        
+        # Map -1..1 to 0..100 for SVG (Y is inverted: 0 is top, 100 is bottom)
+        # Valence: 0.8 -> 10 (High), -0.8 -> 90 (Low)
+        x = (i / (len(recent_moods) - 1)) * 100 if len(recent_moods) > 1 else 0
+        y_v = 50 - (v * 40)
+        y_a = 50 - (a * 40)
+        
+        points_v.append(f"{x:.1f},{y_v:.1f}")
+        points_a.append(f"{x:.1f},{y_a:.1f}")
+    
+    if not points_v:
+        return "M0,50 L100,50", "M0,80 L100,80", "M0,80 L100,80 L100,100 L0,100 Z"
+
+    path_v = "M" + " L".join(points_v)
+    path_a = "M" + " L".join(points_a)
+    fill_a = path_a + f" L100,100 L0,100 Z"
+    
+    return path_v, path_a, fill_a
+
+def render_facts_html():
+    if not os.path.exists(DB_PATH): return ""
+    try:
+        conn = sqlite3.connect(f"file:{DB_PATH}?mode=ro", uri=True)
+        df = pd.read_sql_query("SELECT subject, predicate, object, timestamp FROM facts ORDER BY timestamp DESC LIMIT 5", conn)
+        conn.close()
+        rows = ""
+        for _, row in df.iterrows():
+            rows += f"<tr><td>{html.escape(row['subject'])}</td><td>{html.escape(row['predicate'])}</td><td class='num'>{html.escape(row['object'])}</td><td></td></tr>"
+        return rows
+    except: return ""
+
+def render_console_html():
+    if not os.path.exists(LOG_FILE): return "> Awaiting bot.log..."
+    try:
+        with open(LOG_FILE, "r", encoding="utf-8", errors="replace") as f:
+            lines = f.readlines()[-8:]
+        output = ""
+        for line in lines:
+            if "ERROR" in line or "CRITICAL" in line:
+                output += f"<span style='color:#f85149;'>{html.escape(line.strip())}</span><br>"
+            else:
+                output += f"<span>{html.escape(line.strip())}</span><br>"
+        return output
+    except: return "> Error reading logs."
+
+def generate_graph_layout(time_filter="ALL"):
+    """Generates a 3D isometric graph layout from real SQLite facts for the NEXUS canvas."""
+    import math
+    
+    hubs = [
+        {"id": "cog", "x": 0, "y": 0, "r": 30, "h": 75, "hue": 300, "label": "COGNITIVE CORE",
+         "meta": "Central processing hub\\nAll knowledge flows through here"}
+    ]
+    matrices = []
+    links_list = []
+    hub_hues = [190, 38, 120, 280, 60, 340, 160, 30, 210, 90, 330, 250, 15, 175, 75]
+    
+    if not os.path.exists(DB_PATH):
+        hubs.append({"id": "empty", "x": 0, "y": 120, "r": 20, "h": 40, "hue": 190, "label": "NO DATA", "meta": "No database found"})
+        links_list.append(["cog", "empty"])
+        return json.dumps({"hubs": hubs, "matrices": matrices, "links": links_list})
+    
+    time_clause = ""
+    if time_filter == "DAY": time_clause = "WHERE timestamp > datetime('now', '-1 day')"
+    elif time_filter == "WEEK": time_clause = "WHERE timestamp > datetime('now', '-7 days')"
+    elif time_filter == "MONTH": time_clause = "WHERE timestamp > datetime('now', '-30 days')"
+    
+    try:
+        conn = sqlite3.connect(f"file:{DB_PATH}?mode=ro", uri=True)
+        df = pd.read_sql_query(f"SELECT subject, predicate, object, timestamp FROM facts {time_clause} ORDER BY timestamp DESC", conn)
+        conn.close()
+    except:
+        return json.dumps({"hubs": hubs, "matrices": [], "links": []})
+    
+    if df.empty:
+        return json.dumps({"hubs": hubs, "matrices": [], "links": []})
+    
+    subjects = df['subject'].str.strip().unique()
+    total_hubs = len(subjects)
+    radius = max(180, 100 + total_hubs * 25)
+    
+    for i, subj in enumerate(subjects):
+        angle = (2 * math.pi * i / total_hubs) - math.pi / 2
+        hx = int(math.cos(angle) * radius)
+        hy = int(math.sin(angle) * radius)
+        hue = hub_hues[i % len(hub_hues)]
+        hub_id = f"s_{i}"
+        subj_facts = df[df['subject'].str.strip() == subj]
+        fact_count = len(subj_facts)
+        hub_r = min(26, 14 + fact_count * 2)
+        
+        fact_lines = []
+        for _, row in subj_facts.head(20).iterrows():
+            fact_lines.append(f"{row['predicate']}: {row['object']}")
+        meta_str = (f"Subject: {subj}\\nFacts: {fact_count}\\n" + "\\n".join(fact_lines)).replace('"', '\\"')
+        
+        hubs.append({"id": hub_id, "x": hx, "y": hy, "r": hub_r, "h": hub_r * 2,
+                      "hue": hue, "label": subj.upper()[:18], "meta": meta_str})
+        links_list.append(["cog", hub_id])
+        
+        if fact_count > 0:
+            cols = min(fact_count, 10)
+            rows = math.ceil(fact_count / cols)
+            mat_x = hx + int(math.cos(angle) * 70)
+            mat_y = hy + int(math.sin(angle) * 70)
+            matrices.append({"startX": mat_x, "startY": mat_y, "rows": rows, "cols": cols,
+                             "spacing": 18, "hue": hue, "parent": hub_id})
+    
+    for i in range(total_hubs):
+        for j in range(i + 1, total_hubs):
+            s1 = set(df[df['subject'].str.strip() == subjects[i]]['object'].str.strip().str.lower())
+            s2 = set(df[df['subject'].str.strip() == subjects[j]]['object'].str.strip().str.lower())
+            if s1 & s2: links_list.append([f"s_{i}", f"s_{j}"])
+    
+    try:
+        client = chromadb.PersistentClient(path=CHROMA_PATH)
+        collections = client.list_collections()
+        for ci, col in enumerate(collections):
+            ch_angle = (2 * math.pi * (total_hubs + ci) / (total_hubs + len(collections))) - math.pi / 2
+            ch_x = int(math.cos(ch_angle) * (radius + 100))
+            ch_y = int(math.sin(ch_angle) * (radius + 100))
+            ch_id = f"vec_{ci}"
+            try: vec_count = client.get_collection(col.name).count()
+            except: vec_count = 0
+            hubs.append({"id": ch_id, "x": ch_x, "y": ch_y, "r": min(22, 12 + vec_count // 10),
+                          "h": 40, "hue": 190, "label": col.name.upper()[:14],
+                          "meta": f"Vector Store: {col.name}\\nEntries: {vec_count}"})
+            links_list.append(["cog", ch_id])
+            if vec_count > 0:
+                v_cols = min(vec_count, 8)
+                v_rows = min(math.ceil(vec_count / v_cols), 6)
+                matrices.append({"startX": ch_x + int(math.cos(ch_angle) * 60),
+                                  "startY": ch_y + int(math.sin(ch_angle) * 60),
+                                  "rows": v_rows, "cols": v_cols, "spacing": 16, "hue": 190, "parent": ch_id})
+    except: pass
+    
+    return json.dumps({"hubs": hubs, "matrices": matrices, "links": links_list})
+
+
+
+def render_dashboard_template():
+    # Use interval=None for non-blocking if called frequently
+    cpu = psutil.cpu_percent(interval=None) 
+    ram = psutil.virtual_memory().percent
+    # Neural Stress & Mood
+    global neural_stress, current_state
+    try:
+        # Re-fetch during refresh for NEXUS
+        df_logs_refresh = get_audit_logs()
+        stress_labels = ['anger', 'annoyance', 'disappointment', 'disapproval', 'disgust', 'fear', 'grief', 'nervousness', 'remorse', 'sadness', 'error', 'fail', 'warn']
+        recent_logs = df_logs_refresh.head(20)
+        error_count = len(recent_logs[recent_logs['mood'].str.lower().str.contains('|'.join(stress_labels), na=False)])
+        refresh_stress = min(1.0, error_count / 10.0)
+        refresh_state = recent_logs.iloc[0]['mood'].upper() if not recent_logs.empty else "STANDBY"
+    except:
+        refresh_stress = neural_stress
+        refresh_state = current_state
+
+    v_path, a_path, a_fill = get_mood_paths(df_logs_refresh)
+    
+    # Read Template
+    template_path = os.path.join(BASE_DIR, "assets", "example template.html")
+    with open(template_path, "r", encoding="utf-8") as f:
+        tmpl = f.read()
+    
+    # Inject Data
+    tmpl = tmpl.replace("__CPU__", str(f"{cpu:.1f}"))
+    tmpl = tmpl.replace("__RAM__", str(ram))
+    tmpl = tmpl.replace("__STRESS__", str(int(refresh_stress * 100)))
+    tmpl = tmpl.replace("__STATE__", refresh_state[:12])
+    # Firing rate could be based on message frequency in logs
+    try:
+        timestamps = pd.to_datetime(df_logs_refresh['timestamp'], errors='coerce')
+        # If timestamps have timezone, remove it for comparison with naive now()
+        if timestamps.dt.tz is not None:
+            timestamps = timestamps.dt.tz_localize(None)
+        fire_rate = len(df_logs_refresh[timestamps > (pd.Timestamp.now() - pd.Timedelta(minutes=5))]) / 5
+    except Exception as e:
+        fire_rate = 0.0 # Fallback
+    tmpl = tmpl.replace("__SYNAPTIC_RATE__", str(f"{fire_rate:.2f}"))
+    
+    tmpl = tmpl.replace("__FACTS_TABLE__", render_facts_html())
+    tmpl = tmpl.replace("__CONSOLE_OUTPUT__", render_console_html())
+    tmpl = tmpl.replace("__VALENCE_PATH__", v_path)
+    tmpl = tmpl.replace("__AROUSAL_PATH__", a_path)
+    tmpl = tmpl.replace("__AROUSAL_FILL_PATH__", a_fill)
+    
+    # Inject the real knowledge graph data for the center canvas visualization
+    tmpl = tmpl.replace("__GRAPH_DATA__", generate_graph_layout())
+    
+    # Inject live timestamp so user can confirm refresh
+    from datetime import datetime
+    tmpl = tmpl.replace("__UPDATED__", datetime.now().strftime("%H:%M:%S"))
+    
+    st.components.v1.html(tmpl, height=800, scrolling=False)
+
+def render_mobile_template():
+    """Renders the mobile-optimized NEXUS template with real data."""
+    cpu = psutil.cpu_percent(interval=None)
+    ram = psutil.virtual_memory().percent
+    global neural_stress, current_state
+    try:
+        df_logs_m = get_audit_logs()
+        stress_labels = ['anger', 'annoyance', 'disappointment', 'disapproval', 'disgust', 'fear', 'grief', 'nervousness', 'remorse', 'sadness', 'error', 'fail', 'warn']
+        recent_m = df_logs_m.head(20)
+        err_ct = len(recent_m[recent_m['mood'].str.lower().str.contains('|'.join(stress_labels), na=False)])
+        m_stress = min(1.0, err_ct / 10.0)
+        m_state = recent_m.iloc[0]['mood'].upper()[:12] if not recent_m.empty else "STANDBY"
+    except:
+        m_stress = neural_stress
+        m_state = current_state
+        df_logs_m = pd.DataFrame()
+
+    v_path, a_path, a_fill = get_mood_paths(df_logs_m)
+
+    template_path = os.path.join(BASE_DIR, "assets", "tars-mobile.html")
+    with open(template_path, "r", encoding="utf-8") as f:
+        tmpl = f.read()
+
+    # Core stats
+    tmpl = tmpl.replace("__CPU__", str(f"{cpu:.1f}"))
+    tmpl = tmpl.replace("__RAM__", str(ram))
+    tmpl = tmpl.replace("__STRESS__", str(int(m_stress * 100)))
+    tmpl = tmpl.replace("__STATE__", m_state)
+
+    # Knowledge Graph rows (grouped by subject)
+    kg_rows = ""
+    total_facts = 0
+    try:
+        conn = sqlite3.connect(f"file:{DB_PATH}?mode=ro", uri=True)
+        df_facts = pd.read_sql_query("SELECT subject, predicate, object FROM facts", conn)
+        conn.close()
+        total_facts = len(df_facts)
+        subjects = df_facts['subject'].str.strip().value_counts().head(8)
+        max_count = subjects.max() if not subjects.empty else 1
+        for subj, count in subjects.items():
+            pct = int((count / max_count) * 100)
+            kg_rows += f'<div class="k-row"><span class="k-label">{html.escape(subj[:20])}</span>'
+            kg_rows += f'<span class="k-range">{count}</span>'
+            kg_rows += f'<span class="k-num">{pct}.{count % 100:03d}</span>'
+            kg_rows += f'<div class="k-bar-wrap"><div class="k-bar-bg"><div class="k-bar-fill" style="width:{pct}%"></div></div></div></div>'
+    except:
+        kg_rows = '<div class="k-row"><span class="k-label">No data</span></div>'
+    tmpl = tmpl.replace("__KNOWLEDGE_ROWS__", kg_rows)
+
+    # Console output
+    tmpl = tmpl.replace("__CONSOLE_OUTPUT__", render_console_html())
+
+    # Memory cards from audit logs
+    mem_cards = ""
+    total_memories = 0
+    try:
+        recent_entries = df_logs_m.head(6)
+        total_memories = len(df_logs_m)
+        for _, row in recent_entries.iterrows():
+            ts = str(row.get('timestamp', ''))[:19].replace('T', ' // ').replace('-', '-')
+            msg = html.escape(str(row.get('message', row.get('mood', '')))[:120])
+            mem_cards += f'<div class="memory-card"><div class="memory-card-ts">{ts}</div><div class="memory-card-body">{msg}</div></div>'
+    except:
+        mem_cards = '<div class="memory-card"><div class="memory-card-body">No memories available.</div></div>'
+    tmpl = tmpl.replace("__MEMORY_CARDS__", mem_cards)
+    tmpl = tmpl.replace("__TOTAL_MEMORIES__", f"{total_memories:,}")
+    tmpl = tmpl.replace("__TOTAL_FACTS__", f"{total_facts:,}")
+
+    # 24h activity count
+    try:
+        timestamps_m = pd.to_datetime(df_logs_m['timestamp'], errors='coerce')
+        if timestamps_m.dt.tz is not None:
+            timestamps_m = timestamps_m.dt.tz_localize(None)
+        activity_24h = len(df_logs_m[timestamps_m > (pd.Timestamp.now() - pd.Timedelta(hours=24))])
+    except:
+        activity_24h = 0
+    tmpl = tmpl.replace("__ACTIVITY_24H__", f"{activity_24h:,}")
+
+    # Mood chart paths
+    tmpl = tmpl.replace("__VALENCE_PATH__", v_path)
+    tmpl = tmpl.replace("__AROUSAL_PATH__", a_path)
+    tmpl = tmpl.replace("__AROUSAL_FILL_PATH__", a_fill)
+
+    # Mood tags from recent moods
+    mood_tags = ""
+    try:
+        tag_colors = ['cyan', 'magenta', 'orange']
+        recent_moods = df_logs_m['mood'].head(5).unique()
+        for i, mood in enumerate(recent_moods[:5]):
+            color = tag_colors[i % len(tag_colors)]
+            clean_mood = mood.split('(')[0].strip() if '(' in mood else mood.split()[0] if ' ' in mood else mood
+            mood_tags += f'<span class="mood-tag {color}">{html.escape(clean_mood[:12])}</span>'
+    except:
+        mood_tags = '<span class="mood-tag cyan">STANDBY</span>'
+    tmpl = tmpl.replace("__MOOD_TAGS__", mood_tags)
+
+    # Valence/Arousal numeric values
+    try:
+        mood_map = {'joy': (0.8, 0.6), 'curiosity': (0.5, 0.7), 'anger': (-0.7, 0.8), 'sadness': (-0.6, 0.2),
+                    'neutral': (0.0, 0.3), 'approval': (0.6, 0.4), 'excitement': (0.7, 0.9)}
+        last_mood_raw = df_logs_m.iloc[0]['mood'].lower().split('(')[0].strip() if not df_logs_m.empty else 'neutral'
+        v_val, a_val = mood_map.get(last_mood_raw, (0.0, 0.3))
+    except:
+        v_val, a_val = 0.0, 0.3
+    tmpl = tmpl.replace("__VALENCE_VAL__", f"{v_val:+.2f}")
+    tmpl = tmpl.replace("__AROUSAL_VAL__", f"{a_val:+.2f}")
+
+    # 3D Canvas layout
+    tmpl = tmpl.replace("__GRAPH_DATA__", generate_graph_layout())
+
+    st.components.v1.html(tmpl, height=800, scrolling=True)
+
+# --- GLOBAL STATE ---
+# Neural Stress & Mood (Shared across tabs)
+df_logs_global = get_audit_logs()
+try:
+    stress_labels = ['anger', 'annoyance', 'disappointment', 'disapproval', 'disgust', 'fear', 'grief', 'nervousness', 'remorse', 'sadness', 'error', 'fail', 'warn']
+    recent_logs_global = df_logs_global.head(20)
+    error_count_global = len(recent_logs_global[recent_logs_global['mood'].str.lower().str.contains('|'.join(stress_labels), na=False)])
+    neural_stress = min(1.0, error_count_global / 10.0)
+    current_state = recent_logs_global.iloc[0]['mood'].upper() if not recent_logs_global.empty else "STANDBY"
+except:
+    neural_stress = 0.0
+    current_state = "UNKNOWN"
 
 # Physics Calculation
 neural_speed = 0.0006 * (1 + neural_stress * 2)
 
-tab_brain_explorer, tab_knowledge, tab_mem, tab_analytics, tab_models, tab_play, tab_logs, tab_cli, tab_debug, tab_conf = st.tabs([
-    "🧠 Brain Explorer", "🕸️ Knowledge Graph", "🧠 Memories", "📈 Mood", "🤖 Models", "💬 Playground", "📜 Logs", "🖥️ CLI", "🔍 Debug", "⚙️ Config"
+# --- MAIN UI LAYOUT ---
+tab_nexus, tab_mobile, tab_brain_explorer, tab_knowledge, tab_mem, tab_analytics, tab_models, tab_play, tab_logs, tab_cli, tab_debug, tab_conf = st.tabs([
+    "🛰️ NEXUS", "📱 Nexus_mobile", "🧠 Brain Explorer", "🕸️ Knowledge Graph", "🧠 Memories", "📈 Mood", "🤖 Models", "💬 Playground", "📜 Logs", "🖥️ CLI", "🔍 Debug", "⚙️ Config"
 ])
+
+with tab_nexus:
+    render_dashboard_template()
+
+with tab_mobile:
+    render_mobile_template()
 
 # TAB 1: DATABASE LOGS (MOVED DOWN)
 with tab_logs:
@@ -448,6 +813,7 @@ with tab_brain_explorer: # Renamed from tab_brain_explorer to tab_brain in instr
                 st.rerun()
 
     # 1. FETCH DATA FOR HIERARCHICAL VISUALIZATION
+    # Core architecture nodes (always present)
     nodes = [
         {"id": "USER", "name": "USER INPUT", "color": "#00f0ff", "size": 20, "group": "core"},
         {"id": "BRAIN", "name": "COGNITIVE CORE", "color": "#bc13fe", "size": 32, "group": "core"},
@@ -465,132 +831,40 @@ with tab_brain_explorer: # Renamed from tab_brain_explorer to tab_brain in instr
         elif time_range == "WEEK": threshold_days = 7
         elif time_range == "MONTH": threshold_days = 30
 
-        # Connect to ChromaDB
-        client = chromadb.PersistentClient(path=CHROMA_PATH)
-        collections = client.list_collections()
-        
-        hub_colors = ["#ffca28", "#3fb950", "#58a6ff", "#f85149", "#d29922", "#8b949e"]
-        
-        for idx, col in enumerate(collections):
-            hub_id = f"hub_{col.name}"
-            color = hub_colors[idx % len(hub_colors)]
-            
-            # Hub node always added
-            nodes.append({
-                "id": hub_id,
-                "name": f"HUB: {col.name.upper()}",
-                "color": color,
-                "size": 22,
-                "group": "hub",
-                "details": f"Vector Collection: {col.name}",
-                "time_score": 1
-            })
-            links.append({"source": "BRAIN", "target": hub_id, "value": "hub"})
-            
-            try:
-                collection = client.get_collection(col.name)
-                # Fetch limited to avoid massive overhead during debug
-                peek = collection.peek(limit=50)
-                
-                # Verify data structure
-                if not peek or 'ids' not in peek: continue
-                
-                for i, doc_id in enumerate(peek['ids']):
-                    full_text = peek['documents'][i] if i < len(peek['documents']) else "No Content"
-                    metadata = peek['metadatas'][i] if (peek['metadatas'] and i < len(peek['metadatas'])) else {}
-                    
-                    # Temporal logic
-                    time_score = 1
-                    days_old = 0
-                    if "timestamp" in metadata:
-                        try:
-                            # Assuming ISO format or similar
-                            dt = pd.to_datetime(metadata["timestamp"])
-                            days_old = (pd.Timestamp.now() - dt.tz_localize(None)).days
-                            if days_old <= 1: time_score = 1
-                            elif days_old <= 7: time_score = 2
-                            else: time_score = 3
-                        except: pass
-                    
-                    # Applying Filter
-                    if days_old > threshold_days:
-                        continue
-
-                    # Dynamic Sentiment Heatmapping (Simple heuristic)
-                    sentiment_color = color
-                    if "error" in full_text.lower() or "fail" in full_text.lower():
-                        sentiment_color = "#f85149" # Alert Red
-                    elif "success" in full_text.lower() or "done" in full_text.lower():
-                        sentiment_color = "#7ee787" # Kinetic Green
-                    
-                    display_name = full_text[:40] + "..." if len(full_text) > 40 else full_text
-                    node_id = f"mem_{col.name}_{i}"
-                    nodes.append({
-                        "id": node_id,
-                        # Cleaner name: just the predicate and object
-                        "name": display_name,
-                        "color": sentiment_color,
-                        "size": 8,
-                        "group": "data",
-                        "details": full_text,
-                        "metadata": str(metadata),
-                        "time_score": time_score
-                    })
-                    links.append({"source": hub_id, "target": node_id, "value": "data", "strength": 0.8})
-            except Exception as inner_e:
-                err_msg = str(inner_e)
-                st.sidebar.error(f"⚠️ Neural Hub Corrupted: {col.name}")
-                if "Error finding id" in err_msg:
-                    st.sidebar.warning("Detected known ChromaDB index corruption.")
-                    if st.sidebar.button(f"🛠️ Attempt Auto-Repair: {col.name}", key=f"rep_{col.name}"):
-                        repair_neural_collection(client, col.name)
-                else:
-                    st.sidebar.warning(f"Technical Trace: {err_msg[:100]}")
-
+        # =============================================
+        # PRIMARY DATA SOURCE: SQLite Knowledge Graph
+        # (Same source as the Knowledge Graph tab)
+        # =============================================
         if os.path.exists(DB_PATH):
             hub_id = "hub_facts"
             nodes.append({
                 "id": hub_id,
                 "name": "HUB: KNOWLEDGE BASE",
                 "color": "#3fb950",
-                "size": 22,
+                "size": 24,
                 "group": "hub",
-                "details": "Source: SQLite Database",
+                "details": "Source: SQLite Facts Database",
                 "time_score": 1
             })
             links.append({"source": "BRAIN", "target": hub_id, "value": "hub", "strength": 0.9})
             
             try:
                 conn = sqlite3.connect(f"file:{DB_PATH}?mode=ro", uri=True)
-                df_facts = pd.read_sql_query("SELECT id, subject, predicate, object, timestamp FROM facts LIMIT 100", conn)
+                df_facts = pd.read_sql_query("SELECT id, subject, predicate, object, timestamp FROM facts ORDER BY timestamp DESC", conn)
                 conn.close()
                 
-                # Group by Subject for Hierarchy (KNOWLEDGE BASE -> user -> fact)
+                # Group by Subject for Hierarchy (KNOWLEDGE BASE -> Subject Entity -> Facts)
                 subjects_map = {}
+                objects_map = {}  # Track unique objects for cross-linking
 
                 for i, row in df_facts.iterrows():
                     subj = row['subject'].strip()
+                    obj = row['object'].strip()
+                    pred = row['predicate'].strip()
                     
-                    # 1. Create Subject Node if needed
-                    if subj not in subjects_map:
-                        subj_id = f"subj_{subj}_{i}"
-                        nodes.append({
-                            "id": subj_id,
-                            "name": subj.upper(),
-                            "color": "#1f6feb", # Blue for categories
-                            "size": 14,
-                            "group": "user",
-                            "details": f"ENTITY: {subj}\nTYPE: Subject",
-                            "time_score": 1
-                        })
-                        links.append({"source": hub_id, "target": subj_id, "value": "category", "strength": 0.5})
-                        subjects_map[subj] = subj_id
-                    
-                    # 2. Create Fact Node
-                    node_id = f"fact_{row['id'] or i}"
-                    
-                    # Temporal scoring
+                    # Temporal scoring & filtering
                     time_score = 1
+                    days_old = 0
                     try:
                         dt = pd.to_datetime(row['timestamp'])
                         days_old = (pd.Timestamp.now() - dt.tz_localize(None)).days
@@ -599,27 +873,133 @@ with tab_brain_explorer: # Renamed from tab_brain_explorer to tab_brain in instr
                         else: time_score = 3
                     except: pass
 
-                    nodes.append({
-                        "id": node_id,
-                        # Cleaner name: just the predicate and object
-                        "name": f"{row['predicate']} » {row['object']}", 
-                        "color": "#3fb950",
-                        "size": 6,
-                        "group": "data",
-                        "details": f"FACT: {subj}\nRELATION: {row['predicate']}\nTARGET: {row['object']}\nLEARNED: {row['timestamp']}",
-                        "time_score": time_score
-                    })
-                    # Link Fact to Subject, not Hub
-                    links.append({"source": subjects_map[subj], "target": node_id, "value": "fact", "strength": 0.3})
+                    if days_old > threshold_days:
+                        continue
                     
-                    # Phase 2: Cross-Collection Linking - Robust version
-                    for n in nodes:
-                        if n.get('group') == 'data' and 'mem_' in n.get('id', ''):
-                            if 'details' in n and subj.lower() in n['details'].lower():
-                                links.append({"source": n['id'], "target": subjects_map[subj], "value": "cross", "strength": 0.1})
+                    # 1. Create Subject Entity Node if needed
+                    if subj not in subjects_map:
+                        subj_id = f"subj_{subj.replace(' ', '_')}"
+                        nodes.append({
+                            "id": subj_id,
+                            "name": subj.upper(),
+                            "color": "#1f6feb",
+                            "size": 16,
+                            "group": "user",
+                            "details": f"ENTITY: {subj}\nTYPE: Subject\nFacts: {len(df_facts[df_facts['subject'].str.strip() == subj])}",
+                            "time_score": 1
+                        })
+                        links.append({"source": hub_id, "target": subj_id, "value": "category", "strength": 0.6})
+                        subjects_map[subj] = subj_id
+                    
+                    # 2. Create Object Node if unique enough (avoid duplicates)
+                    obj_key = obj.lower().strip()
+                    if obj_key not in objects_map:
+                        obj_id = f"obj_{obj_key.replace(' ', '_')}_{i}"
+                        nodes.append({
+                            "id": obj_id,
+                            "name": obj[:30],
+                            "color": "#3fb950",
+                            "size": 8,
+                            "group": "data",
+                            "details": f"FACT: {subj} {pred} {obj}\nLEARNED: {row['timestamp']}",
+                            "time_score": time_score
+                        })
+                        objects_map[obj_key] = obj_id
+                    
+                    # 3. Link Subject -> Object with Predicate as relationship
+                    links.append({
+                        "source": subjects_map[subj], 
+                        "target": objects_map[obj_key], 
+                        "value": "fact", 
+                        "strength": 0.4,
+                        "label": pred
+                    })
+
             except Exception as db_e:
                 st.sidebar.warning(f"Skipping fact engine: {db_e}")
+        
+        # =============================================
+        # SECONDARY DATA SOURCE: ChromaDB Vector Store
+        # (Optional - gracefully fails without breaking)
+        # =============================================
+        try:
+            client = chromadb.PersistentClient(path=CHROMA_PATH)
+            collections = client.list_collections()
+            
+            hub_colors = ["#ffca28", "#58a6ff", "#f85149", "#d29922", "#8b949e"]
+            
+            for idx, col in enumerate(collections):
+                hub_id = f"hub_{col.name}"
+                color = hub_colors[idx % len(hub_colors)]
                 
+                nodes.append({
+                    "id": hub_id,
+                    "name": f"VEC: {col.name.upper()}",
+                    "color": color,
+                    "size": 18,
+                    "group": "hub",
+                    "details": f"Vector Collection: {col.name}",
+                    "time_score": 1
+                })
+                links.append({"source": "BRAIN", "target": hub_id, "value": "hub"})
+                
+                try:
+                    collection = client.get_collection(col.name)
+                    peek = collection.peek(limit=30)
+                    
+                    if not peek or 'ids' not in peek: continue
+                    
+                    for i, doc_id in enumerate(peek['ids']):
+                        full_text = peek['documents'][i] if i < len(peek['documents']) else "No Content"
+                        metadata = peek['metadatas'][i] if (peek['metadatas'] and i < len(peek['metadatas'])) else {}
+                        
+                        # Temporal filtering
+                        days_old = 0
+                        time_score = 1
+                        if "timestamp" in metadata:
+                            try:
+                                dt = pd.to_datetime(metadata["timestamp"])
+                                days_old = (pd.Timestamp.now() - dt.tz_localize(None)).days
+                                if days_old <= 1: time_score = 1
+                                elif days_old <= 7: time_score = 2
+                                else: time_score = 3
+                            except: pass
+                        
+                        if days_old > threshold_days:
+                            continue
+
+                        # Sentiment coloring
+                        sentiment_color = color
+                        if "error" in full_text.lower() or "fail" in full_text.lower():
+                            sentiment_color = "#f85149"
+                        elif "success" in full_text.lower() or "done" in full_text.lower():
+                            sentiment_color = "#7ee787"
+                        
+                        display_name = full_text[:35] + "…" if len(full_text) > 35 else full_text
+                        node_id = f"mem_{col.name}_{i}"
+                        nodes.append({
+                            "id": node_id,
+                            "name": display_name,
+                            "color": sentiment_color,
+                            "size": 6,
+                            "group": "data",
+                            "details": full_text,
+                            "metadata": str(metadata),
+                            "time_score": time_score
+                        })
+                        links.append({"source": hub_id, "target": node_id, "value": "data", "strength": 0.8})
+                        
+                        # Cross-link: if memory text mentions a known subject, connect them
+                        for subj_name, subj_node_id in subjects_map.items():
+                            if subj_name.lower() in full_text.lower():
+                                links.append({"source": node_id, "target": subj_node_id, "value": "cross", "strength": 0.15})
+                                break  # Only one cross-link per memory
+                                
+                except Exception as inner_e:
+                    pass  # Silently skip corrupted collections
+        except Exception as chroma_e:
+            pass  # ChromaDB entirely unavailable - that's fine, facts are primary
+
         # Calculate Global Brain Sentiment for Background Pulse
         active_data_nodes = [n for n in nodes if n['group'] == 'data']
         avg_sentiment = 0
