@@ -676,9 +676,61 @@ def render_mobile_template():
         v_val, a_val = 0.0, 0.3
     tmpl = tmpl.replace("__VALENCE_VAL__", f"{v_val:+.2f}")
     tmpl = tmpl.replace("__AROUSAL_VAL__", f"{a_val:+.2f}")
-
-    # 3D Canvas layout
-    tmpl = tmpl.replace("__GRAPH_DATA__", generate_graph_layout())
+    # Cognitive Map (D3 force graph data - same format as Brain Explorer)
+    cog_nodes = [
+        {"id": "USER", "name": "USER INPUT", "color": "#00f0ff", "size": 20, "group": "core"},
+        {"id": "BRAIN", "name": "COGNITIVE CORE", "color": "#bc13fe", "size": 32, "group": "core"},
+        {"id": "LLM", "name": "LLM API", "color": "#5865f2", "size": 18, "group": "core"}
+    ]
+    cog_links = [
+        {"source": "USER", "target": "BRAIN", "value": "core"},
+        {"source": "BRAIN", "target": "LLM", "value": "core"}
+    ]
+    try:
+        if os.path.exists(DB_PATH):
+            hub_id = "hub_facts"
+            cog_nodes.append({"id": hub_id, "name": "KNOWLEDGE BASE", "color": "#3fb950", "size": 22, "group": "hub"})
+            cog_links.append({"source": "BRAIN", "target": hub_id, "value": "hub"})
+            conn = sqlite3.connect(f"file:{DB_PATH}?mode=ro", uri=True)
+            df_cog = pd.read_sql_query("SELECT subject, predicate, object FROM facts ORDER BY rowid DESC", conn)
+            conn.close()
+            subjects_seen = {}
+            for i, row in df_cog.iterrows():
+                subj = row['subject'].strip()
+                obj = row['object'].strip()
+                pred = row['predicate'].strip()
+                # Subject nodes (deduplicated)
+                if subj not in subjects_seen:
+                    sid = f"s_{subj.replace(' ','_')}"
+                    cog_nodes.append({"id": sid, "name": subj.upper()[:16], "color": "#1f6feb", "size": 12, "group": "user"})
+                    cog_links.append({"source": hub_id, "target": sid, "value": "category"})
+                    subjects_seen[subj] = sid
+                # Object/fact nodes
+                oid = f"o_{i}"
+                cog_nodes.append({"id": oid, "name": obj[:20], "color": "#3fb950", "size": 6, "group": "data"})
+                cog_links.append({"source": subjects_seen[subj], "target": oid, "value": "fact"})
+        try:
+            client = chromadb.PersistentClient(path=CHROMA_PATH)
+            collections = client.list_collections()
+            colors = ["#ffca28", "#58a6ff", "#f85149", "#d29922"]
+            for idx, col in enumerate(collections):
+                cid = f"vec_{col.name}"
+                cog_nodes.append({"id": cid, "name": f"VEC:{col.name.upper()[:10]}", "color": colors[idx % len(colors)], "size": 16, "group": "hub"})
+                cog_links.append({"source": "BRAIN", "target": cid, "value": "hub"})
+                try:
+                    collection = client.get_collection(col.name)
+                    peek = collection.peek(limit=50)
+                    if peek and 'ids' in peek:
+                        for j, doc_id in enumerate(peek['ids']):
+                            did = f"d_{col.name}_{j}"
+                            doc_text = peek['documents'][j][:20] if j < len(peek['documents']) else doc_id[:20]
+                            cog_nodes.append({"id": did, "name": doc_text, "color": colors[idx % len(colors)], "size": 5, "group": "data"})
+                            cog_links.append({"source": cid, "target": did, "value": "data"})
+                except: pass
+        except: pass
+    except: pass
+    tmpl = tmpl.replace("__COG_NODES__", json.dumps(cog_nodes))
+    tmpl = tmpl.replace("__COG_LINKS__", json.dumps(cog_links))
 
     st.components.v1.html(tmpl, height=800, scrolling=True)
 

@@ -826,8 +826,18 @@
 
         <!-- PAGE 0: BRAIN EXPLORER -->
         <div class="page" id="page-0">
-          <div id="brain-canvas-wrap">
-            <svg id="cog-map-svg" style="width:100%;height:100%;background:transparent;"></svg>
+          <div id="brain-canvas-wrap" style="position:relative;">
+            <svg id="cog-map-svg" style="width:calc(100% - 30px);height:100%;background:transparent;"></svg>
+            <div
+              style="position:absolute;right:2px;top:10px;bottom:30px;width:24px;display:flex;flex-direction:column;align-items:center;gap:4px;z-index:10;">
+              <span id="node-count-label"
+                style="font-size:7px;color:var(--cyan);font-family:'Share Tech Mono',monospace;writing-mode:vertical-rl;transform:rotate(180deg);white-space:nowrap;">500
+                NODES</span>
+              <input type="range" id="node-slider" min="10" max="100" value="50" orient="vertical"
+                style="writing-mode:bt-lr;-webkit-appearance:slider-vertical;width:18px;flex:1;accent-color:var(--cyan);cursor:pointer;"
+                oninput="updateCogMap(this.value)">
+              <span style="font-size:6px;color:var(--text-dim);font-family:'Share Tech Mono',monospace;">ALL</span>
+            </div>
             <div class="brain-label">NEURAL MESH // LIVE</div>
           </div>
 
@@ -1097,165 +1107,109 @@
       }
     }, { passive: true });
 
-    // ── GLOBAL CANVAS (background mesh) ──
-    const W_GL = window.innerWidth, H_GL = window.innerHeight;
-    const cvBg = document.getElementById('c-bg');
-    const cvMain = document.getElementById('c-main');
-    const cvFx = document.getElementById('c-fx');
-    [cvBg, cvMain, cvFx].forEach(c => { c.width = W_GL; c.height = H_GL; });
-    const bg = cvBg.getContext('2d');
-    const ctx = cvMain.getContext('2d');
-    const fx = cvFx.getContext('2d');
+    // ── COGNITIVE MAP (D3 Force Graph with Slider) ──
+    const allCogNodes = __COG_NODES__;
+    const allCogLinks = __COG_LINKS__;
+    let currentSim = null;
 
-    const cx = W_GL / 2, cy = H_GL / 2;
-    const ISO_Y = 0.5;
+    function buildCogMap(pct) {
+      const wrap = document.getElementById('brain-canvas-wrap');
+      if (!wrap || typeof d3 === 'undefined') return;
+      const W = (wrap.offsetWidth - 30) || 270;
+      const H = wrap.offsetHeight || 200;
+      const svg = d3.select('#cog-map-svg').attr('viewBox', `0 0 ${W} ${H}`);
+      svg.selectAll('*').remove();
+      if (currentSim) currentSim.stop();
 
-    const layout = __GRAPH_DATA__;
-
-    let matrixNodes = [];
-    layout.matrices.forEach(m => {
-      for (let r = 0; r < m.rows; r++) {
-        for (let c = 0; c < m.cols; c++) {
-          const nx = m.startX + c * m.spacing - r * m.spacing * 0.5;
-          const ny = m.startY + r * m.spacing + c * m.spacing;
-          matrixNodes.push({ x: nx, y: ny, r: 5, h: 10, hue: m.hue, parent: m.parent, wobble: Math.random() * Math.PI * 2 });
-        }
-      }
-    });
-
-    let fireQueue = [], fireCount = 0;
-
-    function hsl(h, s, l, a = 1) { return `hsla(${h},${s}%,${l}%,${a})`; }
-
-    function draw3DPillar(n, t) {
-      const { x, y, r, h, hue, label } = n;
-      const ry = r * ISO_Y;
-      const pulse = 0.8 + Math.sin(t * 2 + x) * 0.2;
-      const fire = n.fireAmt || 0;
-      if (n.fireAmt > 0) n.fireAmt = Math.max(0, n.fireAmt - 0.03);
-      ctx.save();
-      const aura = ctx.createRadialGradient(x, y - h / 2, 0, x, y - h / 2, r * 5);
-      aura.addColorStop(0, hsl(hue, 100, 50, 0.15 * pulse + fire * 0.3));
-      aura.addColorStop(1, 'transparent');
-      ctx.fillStyle = aura;
-      ctx.beginPath(); ctx.ellipse(x, y - h / 2, r * 4, ry * 4 + h / 2, 0, 0, Math.PI * 2); ctx.fill();
-      const bodyGrd = ctx.createLinearGradient(x, y, x, y - h);
-      bodyGrd.addColorStop(0, 'rgba(0,0,0,0.8)');
-      bodyGrd.addColorStop(0.5, hsl(hue, 90, 50, 0.8));
-      bodyGrd.addColorStop(1, hsl(hue, 100, 80, 0.9));
-      ctx.globalAlpha = 0.9;
-      ctx.beginPath();
-      ctx.moveTo(x - r, y); ctx.lineTo(x - r, y - h);
-      ctx.ellipse(x, y - h, r, ry, 0, Math.PI, 0);
-      ctx.lineTo(x + r, y);
-      ctx.ellipse(x, y, r, ry, 0, 0, Math.PI);
-      ctx.fillStyle = bodyGrd; ctx.fill();
-      ctx.beginPath(); ctx.ellipse(x, y - h, r, ry, 0, 0, Math.PI * 2);
-      ctx.fillStyle = '#fff'; ctx.shadowBlur = 15 + fire * 15; ctx.shadowColor = hsl(hue, 100, 60); ctx.fill();
-      if (r > 10) {
-        const fh = r * 3, fw = r * 0.7;
-        ctx.globalAlpha = 0.5 * pulse;
-        const flameGrd = ctx.createLinearGradient(x, y - h, x, y - h - fh);
-        flameGrd.addColorStop(0, hsl(hue, 100, 70, 0.9));
-        flameGrd.addColorStop(1, 'transparent');
-        ctx.fillStyle = flameGrd;
-        ctx.beginPath();
-        ctx.moveTo(x, y - h);
-        ctx.bezierCurveTo(x + fw, y - h - fh * 0.4, x + fw * 0.4, y - h - fh * 0.8, x, y - h - fh);
-        ctx.bezierCurveTo(x - fw * 0.4, y - h - fh * 0.8, x - fw, y - h - fh * 0.4, x, y - h);
-        ctx.fill();
-      }
-      if (label) {
-        ctx.globalAlpha = 0.9;
-        ctx.font = 'bold 9px "Share Tech Mono"';
-        ctx.fillStyle = hsl(hue, 80, 80);
-        ctx.shadowBlur = 4; ctx.shadowColor = '#000';
-        ctx.textAlign = 'center';
-        ctx.fillText(label, x, y + 20);
-      }
-      ctx.restore();
-    }
-
-    function drawSynapseEdge(x1, y1, x2, y2, hue) {
-      ctx.save();
-      ctx.strokeStyle = hsl(hue, 80, 60, 0.18);
-      ctx.lineWidth = 1;
-      ctx.beginPath(); ctx.moveTo(x1, y1); ctx.lineTo(x2, y2); ctx.stroke();
-      ctx.restore();
-    }
-
-    function drawMembraneBoundary(t) {
-      bg.clearRect(0, 0, W_GL, H_GL);
-      bg.save();
-      bg.beginPath();
-      const radius = Math.min(W_GL, H_GL) * 0.38;
-      for (let i = 0; i < Math.PI * 2; i += 0.1) {
-        const noise = Math.sin(t * 0.5 + i * 3) * 15 + Math.cos(t * 0.3 + i * 5) * 10;
-        const px = cx + Math.cos(i) * (radius + noise);
-        const py = cy + Math.sin(i) * ((radius * ISO_Y) + noise * ISO_Y);
-        if (i === 0) bg.moveTo(px, py); else bg.lineTo(px, py);
-      }
-      bg.closePath();
-      bg.strokeStyle = 'rgba(0,229,255,0.35)';
-      bg.lineWidth = 2;
-      bg.shadowBlur = 20; bg.shadowColor = '#00e5ff';
-      bg.stroke();
-      const neb = bg.createRadialGradient(cx, cy, 0, cx, cy, radius);
-      neb.addColorStop(0, 'rgba(0,20,40,0.5)');
-      neb.addColorStop(1, 'transparent');
-      bg.fillStyle = neb; bg.fill();
-      bg.restore();
-    }
-
-    function scheduleFire() {
-      if (Math.random() < 0.1) {
-        const link = layout.links[Math.floor(Math.random() * layout.links.length)];
-        const h1 = layout.hubs.find(h => h.id === link[0]);
-        const h2 = layout.hubs.find(h => h.id === link[1]);
-        fireQueue.push({ p1: h1, p2: h2, progress: 0, speed: 0.02 + Math.random() * 0.02 });
-        fireCount++;
-        document.getElementById('fire-rate').innerText = Math.floor(fireCount / 2);
-      }
-    }
-
-    const t0 = performance.now();
-    function loop(now) {
-      requestAnimationFrame(loop);
-      const t = (now - t0) / 1000;
-      ctx.clearRect(0, 0, W_GL, H_GL);
-      fx.clearRect(0, 0, W_GL, H_GL);
-      drawMembraneBoundary(t);
-      const floatX = Math.sin(t * 0.5) * 4;
-      const floatY = Math.cos(t * 0.4) * 2;
-      matrixNodes.forEach(mn => {
-        const parent = layout.hubs.find(h => h.id === mn.parent);
-        if (parent) drawSynapseEdge(cx + parent.x + floatX, cy + parent.y * ISO_Y + floatY, cx + mn.x + floatX, cy + mn.y * ISO_Y + floatY, mn.hue);
+      // Always keep core/hub/user nodes; filter data nodes by pct
+      const coreNodes = allCogNodes.filter(n => n.group !== 'data');
+      const dataNodes = allCogNodes.filter(n => n.group === 'data');
+      const maxData = Math.max(1, Math.floor(dataNodes.length * (pct / 100)));
+      const visibleData = dataNodes.slice(0, maxData);
+      const visibleNodes = [...coreNodes, ...visibleData];
+      const visibleIds = new Set(visibleNodes.map(n => n.id));
+      const visibleLinks = allCogLinks.filter(l => {
+        const sid = typeof l.source === 'object' ? l.source.id : l.source;
+        const tid = typeof l.target === 'object' ? l.target.id : l.target;
+        return visibleIds.has(sid) && visibleIds.has(tid);
       });
-      layout.links.forEach(link => {
-        const h1 = layout.hubs.find(h => h.id === link[0]);
-        const h2 = layout.hubs.find(h => h.id === link[1]);
-        drawSynapseEdge(cx + h1.x + floatX, cy + h1.y * ISO_Y + floatY, cx + h2.x + floatX, cy + h2.y * ISO_Y + floatY, h1.hue);
+
+      // Reset positions for clean re-layout
+      visibleNodes.forEach(n => { delete n.x; delete n.y; delete n.vx; delete n.vy; delete n.fx; delete n.fy; });
+      // Fix source/target back to IDs for d3 re-linking
+      visibleLinks.forEach(l => {
+        if (typeof l.source === 'object') l.source = l.source.id;
+        if (typeof l.target === 'object') l.target = l.target.id;
       });
-      scheduleFire();
-      let alive = [];
-      fireQueue.forEach(f => {
-        f.progress += f.speed;
-        if (f.progress >= 1) { f.p2.fireAmt = 1; return; }
-        alive.push(f);
-        const px = cx + f.p1.x + (f.p2.x - f.p1.x) * f.progress + floatX;
-        const py = cy + (f.p1.y + (f.p2.y - f.p1.y) * f.progress) * ISO_Y + floatY;
-        fx.save(); fx.globalAlpha = 0.9; fx.fillStyle = '#fff';
-        fx.shadowBlur = 12; fx.shadowColor = hsl(f.p1.hue, 100, 60);
-        fx.beginPath(); fx.arc(px, py, 2.5, 0, Math.PI * 2); fx.fill(); fx.restore();
-      });
-      fireQueue = alive;
-      const allNodes = [...layout.hubs.map(h => ({ ...h, isHub: true })), ...matrixNodes.map(m => ({ ...m, isHub: false }))];
-      allNodes.sort((a, b) => (a.y * ISO_Y) - (b.y * ISO_Y)).forEach(n => {
-        draw3DPillar({ ...n, x: cx + n.x + floatX, y: cy + n.y * ISO_Y + floatY + (n.isHub ? 0 : Math.sin(t * 3 + n.wobble) * 2) }, t);
+
+      // Update label
+      document.getElementById('node-count-label').textContent = visibleNodes.length + ' NODES';
+
+      const defs = svg.append('defs');
+      defs.append('filter').attr('id', 'glow').append('feGaussianBlur').attr('stdDeviation', '2.5');
+
+      const g = svg.append('g');
+      svg.call(d3.zoom().scaleExtent([0.2, 5]).on('zoom', e => g.attr('transform', e.transform)));
+
+      const chargeStr = visibleNodes.length > 300 ? -15 : (visibleNodes.length > 100 ? -25 : -40);
+
+      currentSim = d3.forceSimulation(visibleNodes)
+        .force('link', d3.forceLink(visibleLinks).id(d => d.id).distance(d => d.value === 'core' ? 60 : 35).strength(0.25))
+        .force('charge', d3.forceManyBody().strength(d => d.group === 'core' ? -300 : (d.group === 'hub' ? -120 : chargeStr)))
+        .force('center', d3.forceCenter(W / 2, H / 2))
+        .force('collide', d3.forceCollide().radius(d => d.size * 0.4 + 2))
+        .alphaDecay(0.04);
+
+      const link = g.append('g').selectAll('line').data(visibleLinks).enter().append('line')
+        .attr('stroke', d => d.value === 'core' ? '#58a6ff' : (d.value === 'hub' ? '#555' : '#222'))
+        .attr('stroke-width', d => d.value === 'core' ? 1.5 : 0.4)
+        .attr('stroke-opacity', 0.5);
+
+      const node = g.append('g').selectAll('circle').data(visibleNodes).enter().append('circle')
+        .attr('r', d => Math.min(d.size * 0.5, 12))
+        .attr('fill', d => d.color)
+        .attr('filter', 'url(#glow)')
+        .style('cursor', 'pointer')
+        .call(d3.drag()
+          .on('start', (e, d) => { if (!e.active) currentSim.alphaTarget(0.3).restart(); d.fx = d.x; d.fy = d.y; })
+          .on('drag', (e, d) => { d.fx = e.x; d.fy = e.y; })
+          .on('end', (e, d) => { if (!e.active) currentSim.alphaTarget(0); d.fx = null; d.fy = null; }));
+
+      const label = g.append('g').selectAll('text').data(visibleNodes.filter(d => d.group !== 'data')).enter().append('text')
+        .text(d => d.name.substring(0, 14))
+        .attr('fill', '#7dd3fc').attr('font-size', '6px')
+        .attr('font-family', '"Share Tech Mono", monospace')
+        .attr('text-anchor', 'middle').attr('dy', d => d.size * 0.5 + 8)
+        .style('pointer-events', 'none');
+
+      currentSim.on('tick', () => {
+        link.attr('x1', d => d.source.x).attr('y1', d => d.source.y).attr('x2', d => d.target.x).attr('y2', d => d.target.y);
+        node.attr('cx', d => d.x).attr('cy', d => d.y);
+        label.attr('x', d => d.x).attr('y', d => d.y);
       });
     }
-    requestAnimationFrame(loop);
-    setInterval(() => fireCount = 0, 1000);
+
+    // Slider callback
+    window.updateCogMap = function (val) { buildCogMap(parseInt(val)); };
+
+    // Initial load - default slider at 50% (capped ~500 if many nodes)
+    function initCogMap() {
+      const slider = document.getElementById('node-slider');
+      // Set initial value so ~500 data nodes show
+      const dataCount = allCogNodes.filter(n => n.group === 'data').length;
+      const initPct = dataCount > 0 ? Math.min(100, Math.floor((500 / dataCount) * 100)) : 100;
+      slider.value = initPct;
+      buildCogMap(initPct);
+    }
+
+    // Load D3 and init
+    if (typeof d3 !== 'undefined') { initCogMap(); }
+    else {
+      const s = document.createElement('script');
+      s.src = 'https://d3js.org/d3.v7.min.js';
+      s.onload = initCogMap;
+      document.head.appendChild(s);
+    }
 
     // ── MODE TOGGLES ──
     document.querySelectorAll('.mode-item').forEach(el => {
