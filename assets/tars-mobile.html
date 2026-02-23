@@ -532,6 +532,29 @@
       height: 100%;
     }
 
+    .selected-node {
+      animation: selection-pulse 1.5s ease-in-out infinite;
+      filter: url(#glow) drop-shadow(0 0 5px #fff) !important;
+    }
+
+    @keyframes selection-pulse {
+      0% {
+        stroke-width: 1.5;
+        stroke-opacity: 0.8;
+      }
+
+      50% {
+        stroke-width: 4;
+        stroke-opacity: 1;
+      }
+
+      100% {
+        stroke-width: 1.5;
+        stroke-opacity: 0.8;
+      }
+    }
+
+    /* Existing styles continues... */
     .brain-label {
       position: absolute;
       bottom: 10px;
@@ -831,7 +854,7 @@
             <div
               style="position:absolute;right:2px;top:10px;bottom:30px;width:24px;display:flex;flex-direction:column;align-items:center;gap:4px;z-index:10;">
               <span id="node-count-label"
-                style="font-size:7px;color:var(--cyan);font-family:'Share Tech Mono',monospace;writing-mode:vertical-rl;transform:rotate(180deg);white-space:nowrap;">500
+                style="font-size:7px;color:var(--cyan);font-family:'Share Tech Mono',monospace;writing-mode:vertical-rl;transform:rotate(180deg);white-space:nowrap;margin-bottom:2px;">500
                 NODES</span>
               <input type="range" id="node-slider" min="10" max="100" value="50" orient="vertical"
                 style="writing-mode:bt-lr;-webkit-appearance:slider-vertical;width:18px;flex:1;accent-color:var(--cyan);cursor:pointer;"
@@ -845,15 +868,15 @@
             <div class="widget-title">NEURAL TELEMETRY</div>
             <div class="tel-row">
               <span class="tel-key">TARGET</span>
-              <span class="tel-val">STANDBY</span>
+              <span id="node-target" class="tel-val">STANDBY</span>
             </div>
             <div class="tel-row">
               <span class="tel-key">METADATA</span>
-              <span class="tel-val cyan">INJECTED</span>
+              <span id="node-metadata" class="tel-val cyan">INJECTED</span>
             </div>
             <div class="tel-row">
-              <span class="tel-key">UPLINK</span>
-              <span class="tel-val cyan">SUCCESS</span>
+              <span class="tel-key">TYPE</span>
+              <span id="node-type" class="tel-val cyan">SUCCESS</span>
             </div>
             <div class="tel-row">
               <span class="tel-key">SYNAPTIC RATE</span>
@@ -1170,6 +1193,23 @@
         .attr('fill', d => d.color)
         .attr('filter', 'url(#glow)')
         .style('cursor', 'pointer')
+        .on('click', function (e, d) {
+          // Update Telemetry
+          document.getElementById('node-target').textContent = d.name.toUpperCase();
+          document.getElementById('node-metadata').textContent = (d.details || '---').substring(0, 50);
+          document.getElementById('node-type').textContent = (d.type || d.group || 'DATA').toUpperCase();
+
+          // Clear previous selection
+          d3.selectAll('circle').interrupt().attr('stroke', 'none').classed('selected-node', false);
+
+          // Cool "Ping" Animation + Persistent State
+          const nodeEl = d3.select(this);
+          nodeEl.classed('selected-node', true)
+            .attr('stroke', '#fff')
+            .attr('stroke-width', 2)
+            .transition().duration(200).attr('r', Math.min(d.size * 0.9, 18))
+            .transition().duration(400).ease(d3.easeBounce).attr('r', Math.min(d.size * 0.5, 12));
+        })
         .call(d3.drag()
           .on('start', (e, d) => { if (!e.active) currentSim.alphaTarget(0.3).restart(); d.fx = d.x; d.fy = d.y; })
           .on('drag', (e, d) => { d.fx = e.x; d.fy = e.y; })

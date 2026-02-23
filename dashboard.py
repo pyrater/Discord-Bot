@@ -702,12 +702,28 @@ def render_mobile_template():
                 # Subject nodes (deduplicated)
                 if subj not in subjects_seen:
                     sid = f"s_{subj.replace(' ','_')}"
-                    cog_nodes.append({"id": sid, "name": subj.upper()[:16], "color": "#1f6feb", "size": 12, "group": "user"})
+                    cog_nodes.append({
+                        "id": sid, 
+                        "name": subj.upper()[:16], 
+                        "color": "#1f6feb", 
+                        "size": 12, 
+                        "group": "user",
+                        "type": "ENTITY",
+                        "details": f"Subject: {subj}"
+                    })
                     cog_links.append({"source": hub_id, "target": sid, "value": "category"})
                     subjects_seen[subj] = sid
                 # Object/fact nodes
                 oid = f"o_{i}"
-                cog_nodes.append({"id": oid, "name": obj[:20], "color": "#3fb950", "size": 6, "group": "data"})
+                cog_nodes.append({
+                    "id": oid, 
+                    "name": obj[:20], 
+                    "color": "#3fb950", 
+                    "size": 6, 
+                    "group": "data",
+                    "type": "FACT",
+                    "details": f"{subj} {pred} {obj}"
+                })
                 cog_links.append({"source": subjects_seen[subj], "target": oid, "value": "fact"})
         try:
             client = chromadb.PersistentClient(path=CHROMA_PATH)
@@ -715,7 +731,15 @@ def render_mobile_template():
             colors = ["#ffca28", "#58a6ff", "#f85149", "#d29922"]
             for idx, col in enumerate(collections):
                 cid = f"vec_{col.name}"
-                cog_nodes.append({"id": cid, "name": f"VEC:{col.name.upper()[:10]}", "color": colors[idx % len(colors)], "size": 16, "group": "hub"})
+                cog_nodes.append({
+                    "id": cid, 
+                    "name": f"VEC:{col.name.upper()[:10]}", 
+                    "color": colors[idx % len(colors)], 
+                    "size": 16, 
+                    "group": "hub",
+                    "type": "VECTOR",
+                    "details": f"Collection: {col.name}"
+                })
                 cog_links.append({"source": "BRAIN", "target": cid, "value": "hub"})
                 try:
                     collection = client.get_collection(col.name)
@@ -723,8 +747,17 @@ def render_mobile_template():
                     if peek and 'ids' in peek:
                         for j, doc_id in enumerate(peek['ids']):
                             did = f"d_{col.name}_{j}"
-                            doc_text = peek['documents'][j][:20] if j < len(peek['documents']) else doc_id[:20]
-                            cog_nodes.append({"id": did, "name": doc_text, "color": colors[idx % len(colors)], "size": 5, "group": "data"})
+                            full_doc = peek['documents'][j] if j < len(peek['documents']) else doc_id
+                            doc_text = full_doc[:20]
+                            cog_nodes.append({
+                                "id": did, 
+                                "name": doc_text, 
+                                "color": colors[idx % len(colors)], 
+                                "size": 5, 
+                                "group": "data",
+                                "type": "MEMORY",
+                                "details": full_doc
+                            })
                             cog_links.append({"source": cid, "target": did, "value": "data"})
                 except: pass
         except: pass
