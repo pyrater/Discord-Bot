@@ -50,7 +50,7 @@ class VoiceSubagent:
             self.audio_buffer = [] # Clear buffer
             
             # Non-blocking: Push to queue
-            audio_logger.info(f"Queueing {buffer_len_sec:.2f}s (flush={force_flush}) for {self.name}")
+            audio_logger.debug(f"Queueing {buffer_len_sec:.2f}s (flush={force_flush}) for {self.name}")
             # Pass name, audio, end_time, id, and the flush status as 'is_final'
             transcription_queue.put((self.name, audio_to_send, end_time, sa_id, force_flush))
 

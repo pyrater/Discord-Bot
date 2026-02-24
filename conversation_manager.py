@@ -19,11 +19,14 @@ class AudioQueue:
     Manages sequential playback of audio sources for a VoiceClient.
     Required for streaming sentence-by-sentence.
     """
+    MAX_PLAY_RETRIES = 8  # Max 8 × 150ms = 1.2s before giving up waiting for vc to stop
+
     def __init__(self, voice_client: discord.VoiceClient):
         self.vc: discord.VoiceClient = voice_client
         self.queue: asyncio.Queue[Tuple[discord.AudioSource, Optional[Callable[[Optional[Exception]], None]]]] = asyncio.Queue()
         self.is_playing: bool = False
         self._stopped: bool = False
+        self._play_retries: int = 0
         self.loop = asyncio.get_event_loop()
 
     async def add(self, source: discord.AudioSource, cleanup: Optional[Callable[[Optional[Exception]], None]] = None) -> None:
@@ -34,35 +37,62 @@ class AudioQueue:
     def play_next(self) -> None:
         if self._stopped or self.queue.empty():
             self.is_playing = False
+            self._play_retries = 0
             return
-        
+
+        # If vc is still finishing a previous ffmpeg process, defer briefly.
+        # Hard cap at MAX_PLAY_RETRIES to avoid an infinite spin if vc never clears.
+        if self.vc.is_playing():
+            self._play_retries += 1
+            if self._play_retries > self.MAX_PLAY_RETRIES:
+                logging.warning(f"⚠️ AudioQueue: vc still playing after {self.MAX_PLAY_RETRIES} retries — forcing stop.")
+                # Force-stop multiple times to ensure it actually stops
+                self.vc.stop()
+                import time
+                time.sleep(0.01)
+                if self.vc.is_playing():
+                    self.vc.stop()  # Call stop() again if still playing
+                self._play_retries = 0
+            else:
+                logging.debug(f"⚠️ AudioQueue: vc still playing, deferring play_next (attempt {self._play_retries}/{self.MAX_PLAY_RETRIES}).")
+                self.loop.call_soon_threadsafe(
+                    lambda: self.loop.call_later(0.15, self.play_next)
+                )
+            return
+
+        self._play_retries = 0
         self.is_playing = True
         try:
             source, cleanup = self.queue.get_nowait()
         except asyncio.QueueEmpty:
             self.is_playing = False
             return
-        
+
         def after_play(e: Optional[Exception]) -> None:
             if e: logging.error(f"Playback Error: {e}")
             if cleanup: cleanup(e)
-            # Schedule next
             self.loop.call_soon_threadsafe(self.play_next)
-            
+
         try:
             if self.vc.is_connected():
                 self.vc.play(source, after=after_play)
             else:
                 self.is_playing = False
+        except discord.errors.ClientException as e:
+            logging.error(f"AudioQueue ClientException: {e}")
+            if cleanup: cleanup(e)
+            self.is_playing = False
+            self.play_next()
         except Exception as e:
             logging.error(f"AudioQueue Error: {e}")
             if cleanup: cleanup(e)
+            self.is_playing = False
             self.play_next()
 
     def stop(self):
         """Stop all playback and clear pending items."""
         self._stopped = True
-        # Drain the queue and clean up any pending audio files
+        self._play_retries = 0
         while not self.queue.empty():
             try:
                 _, cleanup = self.queue.get_nowait()
@@ -143,7 +173,7 @@ class ConversationManager:
                     ack_audio = await asyncio.to_thread(self.voice_engine.synthesize, "Computing...")
                     if ack_audio:
                         tmp_path, cleanup_fn = AudioManager.create_async_audio_file(ack_audio.read())
-                        await audio_queue.add(discord.FFmpegPCMAudio(tmp_path, executable=self.ffmpeg_path, before_options="-loglevel panic"), cleanup_fn)
+                        await audio_queue.add(discord.FFmpegPCMAudio(tmp_path, executable=self.ffmpeg_path), cleanup_fn)
                 except Exception as ack_err:
                     logging.warning(f"⚠️ Voice ack failed (non-critical): {ack_err}")
 
@@ -179,7 +209,7 @@ class ConversationManager:
                                     stream = await asyncio.to_thread(self.voice_engine.synthesize, clean_text)
                                     if stream:
                                         tmp_path, cleanup_fn = AudioManager.create_async_audio_file(stream.read())
-                                        await audio_queue.add(discord.FFmpegPCMAudio(tmp_path, executable=self.ffmpeg_path, before_options="-loglevel panic"), cleanup_fn)
+                                        await audio_queue.add(discord.FFmpegPCMAudio(tmp_path, executable=self.ffmpeg_path), cleanup_fn)
                                sentence_buffer = ""
 
                     # Send to Discord (Regular Text)
@@ -211,7 +241,7 @@ class ConversationManager:
                            stream = await asyncio.to_thread(self.voice_engine.synthesize, clean_text)
                            if stream:
                                tmp_path, cleanup_fn = AudioManager.create_async_audio_file(stream.read())
-                               await audio_queue.add(discord.FFmpegPCMAudio(tmp_path, executable=self.ffmpeg_path, before_options="-loglevel panic"), cleanup_fn)
+                               await audio_queue.add(discord.FFmpegPCMAudio(tmp_path, executable=self.ffmpeg_path), cleanup_fn)
 
             # 6. Update History
             if full_response_text:

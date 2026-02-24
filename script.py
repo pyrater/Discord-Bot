@@ -9,6 +9,11 @@ os.environ['ANONYMIZED_TELEMETRY'] = 'False'
 os.environ["TQDM_DISABLE"] = "1"
 os.environ["TRANSFORMERS_VERBOSITY"] = "error"
 
+import warnings
+warnings.filterwarnings("ignore", category=ResourceWarning)
+warnings.filterwarnings("ignore", category=DeprecationWarning)
+warnings.filterwarnings("ignore", message="parameter 'timeout' of type 'float' is deprecated")
+
 import time
 import json
 import sqlite3
@@ -54,9 +59,15 @@ logging.getLogger("discord.ext.voice_recv.reader").setLevel(logging.ERROR)
 
 
 # --- INTERNAL LOG SUPPRESSION ---
-# These messages come from the discord.py library itself (discord/player.py).
-logging.getLogger("discord.player").setLevel(logging.WARNING)
+# These messages come from the internal libraries.
 logging.getLogger("discord").setLevel(logging.WARNING)
+logging.getLogger("discord.client").setLevel(logging.WARNING)
+logging.getLogger("discord.gateway").setLevel(logging.WARNING)
+logging.getLogger("discord.player").setLevel(logging.WARNING)
+logging.getLogger("httpx").setLevel(logging.WARNING)
+logging.getLogger("urllib3").setLevel(logging.WARNING)
+logging.getLogger("huggingface_hub").setLevel(logging.WARNING)
+logging.getLogger("faster_whisper").setLevel(logging.WARNING)
 
 
 # Configure Root Logger (Stream only, boot.sh handles file redirection)
@@ -215,6 +226,7 @@ async def process_voice_queue():
     """Background task to read from voice_bridge and trigger bot."""
     logging.info("👂 Voice Listener Validation Loop Running...")
     
+    utterance_buffers = {}  # speaker_id -> [text_chunks]
     current_voice_task = None  # Track the active voice interaction task
     
     while True:
@@ -224,25 +236,50 @@ async def process_voice_queue():
             
         try:
             # (speaker_name, text, speaker_id, is_final)
-            # Use run_in_executor to avoid blocking event loop with queue.get
             item = await bot.loop.run_in_executor(None, voice_result_queue.get)
-            
             speaker_name, text, speaker_id, is_final = item
             
-            if not is_final: 
-                continue 
-                
             text = text.strip()
             if not text: 
+                # Even if text is empty, if it's final we might want to check the buffer
+                if not is_final: continue
+            
+            # 1. Accumulate chunks
+            if speaker_id not in utterance_buffers:
+                utterance_buffers[speaker_id] = []
+            
+            if text:
+                utterance_buffers[speaker_id].append(text)
+            
+            # 2. Only proceed if this is the final "silence flush"
+            if not is_final:
+                continue 
+            
+            # 3. Join the full message
+            full_text = " ".join(utterance_buffers[speaker_id]).strip()
+            utterance_buffers[speaker_id] = [] # Clear for next utterance
+            
+            if not full_text:
                 continue
 
-            # logging.info(f"🎤 HEARD [{speaker_name}]: {text}")
+            text = full_text
+
+            # --- PRE-FILTER: Drop obvious noise/fragments before spending LLM on gatekeeper ---
+            word_count = len(text.split())
+            if word_count < 3 or len(text) < 10:
+                logging.debug(f"🔇 Dropped short transcription ({word_count}w): '{text}'")
+                continue
             
             # --- TRIGGER LOGIC ---
-            # 1. Wake Words (Fast Path - Guaranteed)
-            # UPDATED: Wake words for TARS
-            wake_words = ["tars", "robot", "case", "computer", "tarce", "tarst", "tar", "tarz", "hey tars", "ok tars", "taras", "listen", "can you", "yo tars"]
-            is_wake = any(w in text.lower() for w in wake_words)
+            # Wake words — tight list only. Short common words ("tar", "listen", "can you")
+            # cause constant false triggers on normal conversation.
+            wake_words_exact = ["tars", "tarz", "hey tars", "ok tars", "yo tars", "taras"]
+            wake_words_loose = ["tarce", "tarst"]  # Common Whisper mishearings of "TARS"
+            text_lower = text.lower()
+            is_wake = (
+                any(w in text_lower for w in wake_words_exact) or
+                any(w in text_lower for w in wake_words_loose)
+            )
             
             # 2. Contextual Smarts (Slow Path - LLM Gatekeeper)
             should_reply = is_wake
@@ -286,15 +323,39 @@ async def process_voice_queue():
                 
                 # Cancel any in-progress voice interaction (barge-in recovery)
                 if current_voice_task and not current_voice_task.done():
-                    logging.info(f"🛑 [Barge-In Recovery] Cancelling active voice task for {speaker_name}.")
+                    logging.info(f"🛑 [Barge-In] Cancelling active voice task for {speaker_name}")
+                    
+                    # 1. Signal cancellation
                     current_voice_task.cancel()
-                    # Stop any currently playing audio
+                    
+                    # 2. Immediately clear buffer to prevent contamination
+                    utterance_buffers[speaker_id] = []
+                    
+                    # 3. Stop audio playback
                     vc = target_guild.voice_client
-                    if vc and vc.is_playing():
-                        logging.info("🔊 [Barge-In] Force stopping voice client playback.")
-                        vc.stop()
-                    # Brief wait for cancellation to propagate
-                    await asyncio.sleep(0.1)
+                    if vc and vc.is_connected():
+                        # Stop the AudioQueue first
+                        if (hasattr(conversation_manager, 'active_audio_queue') and 
+                            conversation_manager.active_audio_queue):
+                            conversation_manager.active_audio_queue.stop()
+                            logging.debug("📋 AudioQueue stopped")
+                        
+                        # Then stop the voice client
+                        if vc.is_playing():
+                            logging.info("🔊 Voice client playback stopped")
+                            vc.stop()
+                    
+                    # 4. Wait for cancellation with timeout
+                    try:
+                        await asyncio.wait_for(asyncio.sleep(0.2), timeout=0.5)
+                        await current_voice_task
+                    except (asyncio.CancelledError, asyncio.TimeoutError):
+                        pass  # Expected
+                    except Exception as e:
+                        logging.error(f"⚠️ Error awaiting cancellation: {e}")
+                    
+                    logging.info("✅ Barge-in cleanup complete, ready for new interaction")
+                    current_voice_task = None
                 
                 # Launch interaction as a cancellable task (non-blocking)
                 logging.info(f"🚀 [Voice Task] Starting handle_interaction task for {speaker_name}")
@@ -379,4 +440,4 @@ async def on_message(message):
         except Exception as e:
             logging.error(f"Logic Error: {e}")
 
-bot.run(settings.DISCORD_TOKEN)
+bot.run(settings.DISCORD_TOKEN, log_handler=None)

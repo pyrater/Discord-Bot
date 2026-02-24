@@ -68,7 +68,7 @@ class CognitiveEngine:
                     
                 self.gatekeeper = Llama(
                     model_path=resolved_model_path,
-                    n_ctx=2048, n_threads=4, verbose=False
+                    n_ctx=4096, n_threads=4, verbose=False
                 )
             except Exception as e:
                 logging.warning(f"🧠 Brain: Gatekeeper load failed ({e}). Conversational mode optimized.")
@@ -137,13 +137,13 @@ class CognitiveEngine:
                       
         return final_history, final_memories
 
-    async def build_full_system_prompt(self, user_facts, vibe_str, memory_str, history_str):
+    async def build_full_system_prompt(self, user_facts, vibe_str, memory_str, history_str, is_voice=False):
         """Constructs the final huge string for the LLM."""
         facts_block = "\n".join([f"- {f}" for f in user_facts])
         persona_block = self.persona.get('char_persona', 'You are a helpful assistant.')
         now_str = datetime.now().strftime("%Y-%m-%d %H:%M %p")
         
-        return (
+        prompt = (
             f"### SYSTEM PERSONA ###\n{persona_block}\n"
             f"### INTERACTION CONTEXT ###\n[Current Time: {now_str}] [Current Vibe: {vibe_str}]\n"
             f"### KNOWN FACTS ###\n{facts_block}\n"
@@ -164,6 +164,17 @@ class CognitiveEngine:
             "5. Do NOT include 'Generating...' metadata. Just the action.\n"
             "6. **IMPORTANT**: If the user provides an image, DO NOT generate a new image unless EXPLICITLY instructed to 'mix', 'edit', 'change', or 'redraw' it. Typically, just comment on the image provided."
         )
+        
+        # Voice-Specific Instruction Injection
+        if is_voice:
+            prompt += (
+                "\n\n### VOICE MODE ENABLED ###\n"
+                "1. Keep your response very short and punchy, like a real-time conversation.\n"
+                "2. Be succinct. Avoid long lists, bullet points, or complex formatting.\n"
+                "3. Speak naturally and avoid reading out large blocks of text.\n"
+            )
+            
+        return prompt
 
     def get_tools_schema(self):
         """Returns the function calling schema for the LLM."""
@@ -320,7 +331,7 @@ class CognitiveEngine:
 
     async def urban_dict(self, term):
         try:
-            loop = asyncio.get_event_loop()
+            loop = asyncio.get_running_loop()
             def fetch():
                 return requests.get(f"https://api.urbandictionary.com/v0/define?term={term}", timeout=5).json()
             
@@ -341,7 +352,7 @@ class CognitiveEngine:
             return "Search disabled: search library not found."
             
         try:
-            loop = asyncio.get_event_loop()
+            loop = asyncio.get_running_loop()
             def search(backend=None):
                 with DDGS() as ddgs:
                     # Try with default backend first, then 'html' if it fails
@@ -371,7 +382,7 @@ class CognitiveEngine:
             url = url.strip('<>')
             
             # Synchronous request in thread
-            loop = asyncio.get_event_loop()
+            loop = asyncio.get_running_loop()
             def fetch():
                  headers = {'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/91.0.4472.124 Safari/537.36'}
                  r = requests.get(url, headers=headers, timeout=10)
@@ -466,7 +477,7 @@ Directly addressed to Tars? YES/NO:<end_of_turn>
 """
             try:
                 # Synchronous call in thread
-                loop = asyncio.get_event_loop()
+                loop = asyncio.get_running_loop()
                 response = await loop.run_in_executor(None, lambda: self.gatekeeper(prompt, max_tokens=2, temperature=0.0, stop=["<end_of_turn>", "\\n"]))
                 return response['choices'][0]['text'].strip().upper().startswith("YES")
             except Exception as e:
@@ -474,11 +485,14 @@ Directly addressed to Tars? YES/NO:<end_of_turn>
                 return False
         return False
 
-    async def process_interaction(self, user_id, username, user_text, channel_id="DM", guild_id="DM", conversation_history=[], input_image_bytes=None, reminder_callback=None):
+    async def process_interaction(self, user_id, username, user_text, channel_id="DM", guild_id="DM", conversation_history=None, input_image_bytes=None, reminder_callback=None, is_voice=False):
         """
         Centralized logic for processing a user turn.
         Returns: (text_response, image_bytes_or_none, system_prompt, rag_mems)
+        NOTE: This non-streaming version is kept for compatibility but process_interaction_stream is preferred.
         """
+        if conversation_history is None:
+            conversation_history = []
         # TIMING START
         t_start = time.time()
         
@@ -509,7 +523,7 @@ Directly addressed to Tars? YES/NO:<end_of_turn>
         t_rag = time.time()
 
         # 3. CONSTRUCT CONTEXT
-        base_prompt = await self.build_full_system_prompt([], vibe_str, "", "")
+        base_prompt = await self.build_full_system_prompt([], vibe_str, "", "", is_voice=is_voice)
         
         hist_list, mem_list = await self.decide_context(
             base_prompt, 
@@ -523,7 +537,8 @@ Directly addressed to Tars? YES/NO:<end_of_turn>
             user_facts, 
             vibe_str, 
             "\n".join(combined_memories), 
-            "\n".join(hist_list)
+            "\n".join(hist_list),
+            is_voice=is_voice
         )
         t_prompt = time.time()
         
@@ -531,7 +546,7 @@ Directly addressed to Tars? YES/NO:<end_of_turn>
         message_payload = [{"type": "text", "text": f"{username}: {user_text}"}]
         if input_image_bytes:
              # Offload CPU-heavy image processing
-             loop = asyncio.get_event_loop()
+             loop = asyncio.get_running_loop()
              b64_img = await loop.run_in_executor(None, self._encode_image, input_image_bytes)
              
              message_payload.append({
@@ -646,11 +661,13 @@ Directly addressed to Tars? YES/NO:<end_of_turn>
         return response_text, generated_image, system_prompt, rag_mems, clean_text_for_memory
 
 
-    async def process_interaction_stream(self, user_id, username, user_text, channel_id="DM", guild_id="DM", conversation_history=[], input_image_bytes=None, reminder_callback=None):
+    async def process_interaction_stream(self, user_id, username, user_text, channel_id="DM", guild_id="DM", conversation_history=None, input_image_bytes=None, reminder_callback=None, is_voice=False):
         """
         Streamed version of process_interaction. 
         Yields: ("text", "token_str") or ("tool_result", result_obj) or ("meta", metadata_dict)
         """
+        if conversation_history is None:
+            conversation_history = []
         t_start = time.time()
         
         # 1. GATHER (Same as before)
@@ -672,7 +689,7 @@ Directly addressed to Tars? YES/NO:<end_of_turn>
         # 2b. RETRIEVE KNOWLEDGE
         know_docs = self.memory_engine.search_knowledge(user_text, n_results=2)
         
-        base_prompt = await self.build_full_system_prompt([], vibe_str, "", "")
+        base_prompt = await self.build_full_system_prompt([], vibe_str, "", "", is_voice=is_voice)
         hist_list, mem_list = await self.decide_context(
             base_prompt, user_text, rag_mems, conversation_history
         )
@@ -684,7 +701,7 @@ Directly addressed to Tars? YES/NO:<end_of_turn>
             combined_memories.extend([f"[TECHNICAL KNOWLEDGE] {k}" for k in know_docs])
 
         system_prompt = await self.build_full_system_prompt(
-            user_facts, vibe_str, "\n".join(combined_memories), "\n".join(hist_list)
+            user_facts, vibe_str, "\n".join(combined_memories), "\n".join(hist_list), is_voice=is_voice
         )
         
         # Yield Metadata immediately so client knows we started
@@ -693,7 +710,7 @@ Directly addressed to Tars? YES/NO:<end_of_turn>
         # 4. PAYLOAD
         message_payload = [{"type": "text", "text": f"{username}: {user_text}"}]
         if input_image_bytes:
-             loop = asyncio.get_event_loop()
+             loop = asyncio.get_running_loop()
              b64_img = await loop.run_in_executor(None, self._encode_image, input_image_bytes)
              message_payload.append({
                  "type": "image_url", 

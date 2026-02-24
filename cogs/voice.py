@@ -20,19 +20,28 @@ class Voice(commands.Cog):
             # USE VoiceRecvClient to enable listening
             if ctx.voice_client:
                 await ctx.voice_client.move_to(channel)
+                vc = ctx.voice_client
             else:
-                await channel.connect(cls=voice_recv.VoiceRecvClient)
+                vc = await channel.connect(cls=voice_recv.VoiceRecvClient)
             
+            # Wait for connection to stabilize to avoid ClientException: Not connected to voice.
+            for _ in range(10): 
+                if vc and vc.is_connected():
+                    break
+                await asyncio.sleep(0.5)
+
             # Attach the sink
-            # Ensure bot.voice_bridge is set in main script
-            if hasattr(self.bot, 'voice_bridge'):
-                # Store reference for robust re-attachment
-                self.bot.voice_bridge.active_vc = ctx.voice_client
-                ctx.voice_client.listen(self.bot.voice_bridge.sink)
-                await ctx.send(f"🎤 Connected to **{channel.name}**. I'm listening...")
+            if hasattr(self.bot, 'voice_bridge') and vc:
+                try:
+                    vc.listen(self.bot.voice_bridge.sink)
+                    # Register with VoiceBridge so reattach_sink() knows which client to use
+                    self.bot.voice_bridge.active_vc = vc
+                    await ctx.send(f"🎤 Connected to **{channel.name}**. I'm listening...")
+                except discord.ClientException as e:
+                    logging.error(f"Failed to start listening: {e}")
+                    await ctx.send(f"⚠️ Connected to **{channel.name}**, but had trouble starting the ears. Try again?")
             else:
-                await ctx.send(f"⚠️ Connected to **{channel.name}**, but VoiceBridge is not attached. I can't hear you.")
-                logging.error("VoiceBridge not attached to bot instance.")
+                await ctx.send(f"⚠️ Connected to **{channel.name}**, but VoiceBridge is not attached.")
         else:
             await ctx.send("❌ You need to be in a voice channel first.")
 
@@ -41,6 +50,8 @@ class Voice(commands.Cog):
         """Leaves the voice channel."""
         if ctx.voice_client:
             await ctx.voice_client.disconnect()
+            if hasattr(self.bot, 'voice_bridge'):
+                self.bot.voice_bridge.active_vc = None
             await ctx.send("👋 Disconnected.")
         else:
             await ctx.send("❌ I'm not in a voice channel.")

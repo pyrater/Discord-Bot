@@ -29,10 +29,11 @@ DISCORD_SAMPLE_RATE = 48000
 WHISPER_SAMPLE_RATE = 16000
 CHANNELS = 2 # Discord sends stereo
 
-# Barge-in constants
-BARGE_IN_RMS_THRESHOLD = 0.015  # Minimum RMS energy to consider as speech
-BARGE_IN_CONSECUTIVE_PACKETS = 1  # Instant detection — 1 loud packet triggers barge-in
-BARGE_IN_COOLDOWN = 3.0  # Seconds before barge-in can trigger again. Must be > length of re-attach 'beep'.
+# Barge-in constants - IMPROVED SENSITIVITY & RELIABILITY
+BARGE_IN_RMS_THRESHOLD = 0.030  # Increased to 0.030 (was 0.025, 0.015) - further reduce false positives
+BARGE_IN_CONSECUTIVE_PACKETS = 7  # Increased from 5 (210ms validation vs 100ms) - require longer speech  
+BARGE_IN_COOLDOWN = 0.5  # Increased from 0.3 (0.5s between re-triggers) - prevent rapid re-detection
+BARGE_IN_TIMEOUT = 2.0  # Force-reset flag if cleanup stuck > 2 seconds
 
 class DiscordAudioSink(voice_recv.AudioSink):
     """
@@ -46,8 +47,10 @@ class DiscordAudioSink(voice_recv.AudioSink):
         self.user_buffers = {} # Maps user_id -> bytearray
         self.resample_ratio = WHISPER_SAMPLE_RATE / DISCORD_SAMPLE_RATE
         # Barge-in state
-        self._barge_in_counter = 0  # Consecutive loud packets
-        self._last_barge_in_time = 0.0  # Timestamp of last barge-in
+        self._barge_in_counter = 0       # Consecutive loud packets
+        self._last_barge_in_time = 0.0   # Timestamp of last barge-in
+        self._barge_in_in_progress = False  # True while _barge_in_stop() is running
+        self._barge_in_stop_start_time = None  # Track when cleanup started for timeout protection
         # Initialize Subagents if not already
         if not hasattr(tts_config, 'subagents'):
             tts_config.subagents = {}
@@ -106,28 +109,90 @@ class DiscordAudioSink(voice_recv.AudioSink):
                         active_vc = vc
                         break
                 
+                # Check if we're stuck in barge-in and force-reset if timeout exceeded
+                if (self._barge_in_in_progress and 
+                    self._barge_in_stop_start_time and
+                    (current_time - self._barge_in_stop_start_time) > BARGE_IN_TIMEOUT):
+                    logging.warning(f"🛑 BARGE-IN STUCK >{BARGE_IN_TIMEOUT}s, force-resetting state")
+                    self._barge_in_in_progress = False
+                    self._barge_in_stop_start_time = None
+                
                 if is_tars_speaking and rms > BARGE_IN_RMS_THRESHOLD:
                     self._barge_in_counter += 1
-                    if (self._barge_in_counter >= BARGE_IN_CONSECUTIVE_PACKETS and 
-                        (current_time - self._last_barge_in_time) > BARGE_IN_COOLDOWN):
-                        # BARGE-IN! Stop AudioQueue first, then voice client
-                        logging.info(f"🛑 BARGE-IN detected from {user.display_name} (RMS: {rms:.4f}). Stopping playback.")
-                        
-                        # 1. Stop the AudioQueue (prevents next sentence from playing)
-                        if hasattr(self.bot, 'conversation_manager') and self.bot.conversation_manager.active_audio_queue:
-                            self.bot.conversation_manager.active_audio_queue.stop()
-                        
-                        # 2. Stop current audio playback
-                        active_vc.stop()
-                        
-                        # 3. Request robust re-attachment via the bridge
-                        if hasattr(self.bot, 'voice_bridge'):
-                             # DiscordAudioSink.write is called from a receiver thread.
-                             # We must use run_coroutine_threadsafe to schedule on the main loop.
-                             asyncio.run_coroutine_threadsafe(self.bot.voice_bridge.reattach_sink(), self.bot.loop)
-                        
+                    if (self._barge_in_counter >= BARGE_IN_CONSECUTIVE_PACKETS and
+                            (current_time - self._last_barge_in_time) > BARGE_IN_COOLDOWN and
+                            not self._barge_in_in_progress):
+
+                        # Atomically claim this barge-in before any other packet can
+                        self._barge_in_in_progress = True
+                        self._barge_in_stop_start_time = current_time  # Record start time for timeout protection
                         self._barge_in_counter = 0
                         self._last_barge_in_time = current_time
+
+                        logging.info(f"🛑 BARGE-IN detected from {user.display_name} (RMS: {rms:.4f}). Stopping playback.")
+
+                        captured_vc = active_vc
+                        bot_ref = self.bot
+                        sink_ref = self
+                        start_cleanup_time = time.time()
+
+                        async def _barge_in_stop():
+                            try:
+                                # 1. FIRST: Stop the voice client (most important!)
+                                if captured_vc and captured_vc.is_playing():
+                                    logging.debug("🛑 Stopping voice client playback (attempt 1)")
+                                    captured_vc.stop()
+                                    await asyncio.sleep(0.05)
+                                    
+                                    # If still playing, stop again (more forcefully)
+                                    if captured_vc.is_playing():
+                                        logging.debug("🛑 Stopping voice client playback (attempt 2)")
+                                        captured_vc.stop()
+                                        await asyncio.sleep(0.05)
+
+                                # 2. THEN: Drain AudioQueue so no queued sentences resume
+                                if (hasattr(bot_ref, 'conversation_manager') and
+                                        bot_ref.conversation_manager.active_audio_queue):
+                                    bot_ref.conversation_manager.active_audio_queue.stop()
+                                    logging.debug("📋 AudioQueue drained")
+
+                                # 3. Wait for voice client to actually stop (up to 1.5 seconds with aggressive polling)
+                                # Dynamic wait: exit early if ffmpeg already stopped
+                                max_wait_cycles = 150  # 150 * 10ms = 1.5 seconds (increased from 100)
+                                stopped_at = None
+                                for i in range(max_wait_cycles):
+                                    if not captured_vc.is_playing():
+                                        stopped_at = i
+                                        logging.debug(f"✅ Voice client stopped after {i*10}ms")
+                                        break
+                                    await asyncio.sleep(0.01)
+                                
+                                # If it didn't stop, force-stop again
+                                if stopped_at is None:
+                                    logging.warning(f"⚠️ Voice client still playing after {max_wait_cycles*10}ms, force-stopping...")
+                                    for attempt in range(3):  # Try stopping 3 times
+                                        if captured_vc and captured_vc.is_playing():
+                                            captured_vc.stop()
+                                            logging.debug(f"🛑 Force-stop attempt {attempt+1}/3")
+                                            await asyncio.sleep(0.05)
+                                        else:
+                                            logging.info(f"✅ Voice client finally stopped after force-stop attempt {attempt+1}")
+                                            break
+
+                                # 4. Re-attach the sink
+                                if hasattr(bot_ref, 'voice_bridge'):
+                                    await bot_ref.voice_bridge.reattach_sink()
+                            finally:
+                                # Always clear the flags so the next barge-in can fire
+                                sink_ref._barge_in_in_progress = False
+                                sink_ref._barge_in_stop_start_time = None
+                                cleanup_duration = (time.time() - start_cleanup_time) * 1000
+                                logging.info(f"✅ Barge-in cleanup complete ({cleanup_duration:.0f}ms)")
+
+                        asyncio.run_coroutine_threadsafe(_barge_in_stop(), self.bot.loop)
+
+                        # Drop trigger packet — don't feed it into the transcription pipeline
+                        return
                 else:
                     self._barge_in_counter = 0
 
@@ -180,42 +245,45 @@ class VoiceBridge:
         self.response_queue = multiprocessing.Queue() # Queue for text results back to main thread
         self._reattach_lock = asyncio.Lock()
 
-    async def reattach_sink(self):
-        """Safely re-attaches the sink to the voice client after a short delay."""
+    async def reattach_sink(self, attempt=0, max_attempts=3):
+        """Safely re-attaches the sink with retry logic and exponential backoff."""
         # Lazily initialize lock to ensure it's on the right loop
         if not hasattr(self, '_reattach_lock'):
             self._reattach_lock = asyncio.Lock()
-            
+        
         if not self.active_vc:
             logging.warning("⚠️ Cannot reattach sink: No active voice client tracked in VoiceBridge.")
-            return
-
-        logging.info("⏳ reattach_sink requested. Waiting for lock...")
+            return False
+        
         async with self._reattach_lock:
             try:
-                # Wait briefly for the previous stop/cleanup to stabilize
-                await asyncio.sleep(0.15)
+                # Exponential backoff: 0.1s → 0.2s → 0.4s
+                delay = 0.1 * (2 ** attempt)
+                await asyncio.sleep(delay)
                 
-                if hasattr(self.active_vc, 'listen'):
-                    logging.info("🎤 Re-attaching DiscordAudioSink to VoiceRecvClient...")
-                    self.active_vc.listen(self.sink)
-                    logging.info("✅ Sink re-attached successfully.")
-                    
-                    # Play a short acknowledgment
-                    try:
-                        # Synthesize a very short 'Ack'
-                        ack_audio = await asyncio.to_thread(self.bot.conversation_manager.voice_engine.synthesize, "Go Ahead")
-                        if ack_audio:
-                            from voice_engine import AudioManager
-                            tmp_path, cleanup_fn = AudioManager.create_async_audio_file(ack_audio.read())
-                            self.active_vc.play(discord.FFmpegPCMAudio(tmp_path, before_options="-loglevel panic"), after=cleanup_fn)
-                            logging.info("🔊 Re-attachment 'beep' played.")
-                    except Exception as beep_err:
-                        logging.warning(f"⚠️ Re-attach beep failed: {beep_err}")
-                else:
-                    logging.error("❌ Tracked voice client is not a VoiceRecvClient (missing .listen()).")
+                if not hasattr(self.active_vc, 'listen'):
+                    logging.error("❌ Voice client missing .listen() method")
+                    return False
+                
+                logging.info(f"🎤 Re-attaching sink (attempt {attempt+1}/{max_attempts})...")
+                self.active_vc.listen(self.sink)
+                
+                # Brief verification
+                await asyncio.sleep(0.05)
+                
+                logging.info("✅ Sink re-attached successfully.")
+                return True
+                
             except Exception as e:
-                logging.error(f"❌ Failed to reattach sink: {e}")
+                logging.error(f"❌ Re-attach failed (attempt {attempt+1}): {e}")
+                
+                if attempt < max_attempts - 1:
+                    logging.info(f"🔄 Retrying in {delay}s...")
+                    await asyncio.sleep(delay)
+                    return await self.reattach_sink(attempt=attempt+1, max_attempts=max_attempts)
+                
+                logging.error(f"❌ All {max_attempts} re-attach attempts failed")
+                return False
 
     def start_transcription_engine(self):
         """Starts the separate process for Whisper."""
