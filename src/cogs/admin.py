@@ -39,7 +39,7 @@ class Admin(commands.Cog):
         
         # Categorization
         categories = {
-            "🛠️ Core": ["vibe", "reset", "forget", "nuke", "ingest", "cmd"],
+            "🛠️ Core": ["vibe", "reset", "forget", "nuke", "ingest", "cmd", "log"],
             "⏰ Reminders": ["timers", "kill"],
             "🎤 Voice": ["join", "leave"],
             "🦾 AI Tools": ["tools", "recall"] # recall is in memory_cog but feels like a tool
@@ -194,6 +194,45 @@ class Admin(commands.Cog):
         # Note: Supervisor loop in boot.sh will restart the process
         # os._exit ignores exception handlers in the event loop and forcefully terminates
         os._exit(0)
+
+    @commands.hybrid_command(name="log", description="Wipes all .log files in the data directory. (Admin Only)")
+    async def log_cleanup(self, ctx):
+        """Deletes or clears all .log files in the data folder."""
+        if not self.is_admin(ctx):
+            await ctx.send(f"🚫 Access Denied. You are not {settings.ADMIN_USER}.")
+            return
+            
+        import glob
+        log_pattern = os.path.join(settings.DATA_DIR, "*.log")
+        files = glob.glob(log_pattern)
+        
+        if not files:
+            await ctx.send("📂 No log files found to clean.")
+            return
+
+        deleted = []
+        cleared = []
+        errors = []
+
+        for f in files:
+            try:
+                # If it's the active log, we just truncate it
+                if os.path.abspath(f) == os.path.abspath(settings.LOG_FILE):
+                    with open(f, 'w') as log_file:
+                        log_file.truncate(0)
+                    cleared.append(os.path.basename(f))
+                else:
+                    os.remove(f)
+                    deleted.append(os.path.basename(f))
+            except Exception as e:
+                errors.append(f"{os.path.basename(f)}: {str(e)}")
+
+        report = "🧹 **Log Cleanup Report:**\n"
+        if deleted: report += f"✅ Deleted: {', '.join(deleted)}\n"
+        if cleared: report += f"📝 Cleared (Active): {', '.join(cleared)}\n"
+        if errors: report += f"❌ Errors: {', '.join(errors)}"
+        
+        await ctx.send(report)
     
     @commands.hybrid_command(name="ingest", description="Run ingestion scripts: !ingest [code|knowledge|all]. (Admin Only)")
     async def ingest(self, ctx, target: str = "knowledge"):
@@ -244,7 +283,7 @@ class Admin(commands.Cog):
         
         # 1. Grouped Commands
         categories = {
-            "🔴 ADMIN (Priority)": ["nuke", "ingest", "cmd", "vibe", "reset", "forget"],
+            "🔴 ADMIN (Priority)": ["nuke", "ingest", "cmd", "vibe", "reset", "forget", "log"],
             "🎤 VOICE": ["join", "leave"],
             "⏰ REMINDERS": ["timers", "kill"],
             "🧠 AI COGNITIVE TOOLS": [] # Filled dynamically
