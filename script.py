@@ -77,6 +77,7 @@ from llama_cpp import Llama
 from transformers import pipeline
 import transformers.utils.logging as transformers_logging
 transformers_logging.set_verbosity_error()
+transformers_logging.disable_progress_bar()
 import tiktoken
 
 # --- 1. CONFIG & SYSTEM SETUP ---
