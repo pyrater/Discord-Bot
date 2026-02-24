@@ -121,6 +121,7 @@ class Admin(commands.Cog):
         return ctx.author.name == settings.ADMIN_USER
 
     @commands.hybrid_command(name="reset", description="Clear the bot's short-term memory of this channel.")
+    @commands.has_permissions(administrator=True)
     async def reset(self, ctx):
         """Clears conversation history (Admin Only)."""
         if not self.is_admin(ctx):
@@ -163,6 +164,7 @@ class Admin(commands.Cog):
             await ctx.send("❌ Error: Conversation Manager not accessible.")
 
     @commands.hybrid_command(name="nuke", description="⚠️ GLOBAL RESET: Wipes ALL memory of EVERYTHING. (Admin Only)")
+    @commands.has_permissions(administrator=True)
     async def nuke(self, ctx):
         """
         !nuke -> Wipes the ENTIRE database and vector store.
@@ -184,6 +186,7 @@ class Admin(commands.Cog):
              await ctx.send("🧠 Memory Engine offline.")
     
     @commands.hybrid_command(name="restart", description="Restarts the bot (Admin Only).")
+    @commands.has_permissions(administrator=True)
     async def restart(self, ctx):
         """Kills the bot process, supervisor loop will restart it."""
         if not self.is_admin(ctx):
@@ -196,6 +199,7 @@ class Admin(commands.Cog):
         os._exit(0)
 
     @commands.hybrid_command(name="log", description="Wipes all .log files in the data directory. (Admin Only)")
+    @commands.has_permissions(administrator=True)
     async def log_cleanup(self, ctx):
         """Deletes or clears all .log files in the data folder."""
         if not self.is_admin(ctx):
@@ -235,6 +239,7 @@ class Admin(commands.Cog):
         await ctx.send(report)
     
     @commands.hybrid_command(name="ingest", description="Run ingestion scripts: !ingest [code|knowledge|all]. (Admin Only)")
+    @commands.has_permissions(administrator=True)
     async def ingest(self, ctx, target: str = "knowledge"):
         """Manually trigger ingestion (code, knowledge, or all)."""
         if not self.is_admin(ctx):
@@ -269,6 +274,7 @@ class Admin(commands.Cog):
             await ctx.send(f"❌ Error starting ingestion: {e}")
 
     @commands.hybrid_command(name="cmd", description="List EVERYTHING Tars can do. (Admin Only)")
+    @commands.has_permissions(administrator=True)
     async def cmd(self, ctx):
         """Comprehensive list of commands and tools."""
         if not self.is_admin(ctx):
