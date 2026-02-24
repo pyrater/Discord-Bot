@@ -135,61 +135,47 @@ class DiscordAudioSink(voice_recv.AudioSink):
                         bot_ref = self.bot
                         sink_ref = self
                         start_cleanup_time = time.time()
+                        
+                        # ========== INSTANT STOP (synchronous) ==========
+                        # Stop the voice client IMMEDIATELY without waiting
+                        if captured_vc and captured_vc.is_playing():
+                            captured_vc.stop()
+                            logging.debug("🛑 Voice client stopped (instant)")
+                        
+                        # Drain AudioQueue immediately
+                        if (hasattr(bot_ref, 'conversation_manager') and
+                                bot_ref.conversation_manager.active_audio_queue):
+                            bot_ref.conversation_manager.active_audio_queue.stop()
+                            logging.debug("📋 AudioQueue drained (instant)")
 
-                        async def _barge_in_stop():
+                        async def _barge_in_cleanup():
+                            """Background cleanup - verify stop and re-attach sink"""
                             try:
-                                # 1. FIRST: Stop the voice client (most important!)
+                                # Quick verification and additional stops if needed
                                 if captured_vc and captured_vc.is_playing():
-                                    logging.debug("🛑 Stopping voice client playback (attempt 1)")
+                                    logging.debug("🛑 Voice client still playing, additional stop")
                                     captured_vc.stop()
-                                    await asyncio.sleep(0.05)
+                                    await asyncio.sleep(0.02)
                                     
-                                    # If still playing, stop again (more forcefully)
-                                    if captured_vc.is_playing():
-                                        logging.debug("🛑 Stopping voice client playback (attempt 2)")
-                                        captured_vc.stop()
-                                        await asyncio.sleep(0.05)
-
-                                # 2. THEN: Drain AudioQueue so no queued sentences resume
-                                if (hasattr(bot_ref, 'conversation_manager') and
-                                        bot_ref.conversation_manager.active_audio_queue):
-                                    bot_ref.conversation_manager.active_audio_queue.stop()
-                                    logging.debug("📋 AudioQueue drained")
-
-                                # 3. Wait for voice client to actually stop (up to 1.5 seconds with aggressive polling)
-                                # Dynamic wait: exit early if ffmpeg already stopped
-                                max_wait_cycles = 150  # 150 * 10ms = 1.5 seconds (increased from 100)
-                                stopped_at = None
-                                for i in range(max_wait_cycles):
-                                    if not captured_vc.is_playing():
-                                        stopped_at = i
-                                        logging.debug(f"✅ Voice client stopped after {i*10}ms")
-                                        break
-                                    await asyncio.sleep(0.01)
-                                
-                                # If it didn't stop, force-stop again
-                                if stopped_at is None:
-                                    logging.warning(f"⚠️ Voice client still playing after {max_wait_cycles*10}ms, force-stopping...")
-                                    for attempt in range(3):  # Try stopping 3 times
-                                        if captured_vc and captured_vc.is_playing():
-                                            captured_vc.stop()
-                                            logging.debug(f"🛑 Force-stop attempt {attempt+1}/3")
-                                            await asyncio.sleep(0.05)
-                                        else:
-                                            logging.info(f"✅ Voice client finally stopped after force-stop attempt {attempt+1}")
+                                    # Final check with short timeout
+                                    for _ in range(20):  # 200ms max
+                                        if not captured_vc.is_playing():
                                             break
+                                        await asyncio.sleep(0.01)
 
-                                # 4. Re-attach the sink
+                                # Re-attach the sink
                                 if hasattr(bot_ref, 'voice_bridge'):
                                     await bot_ref.voice_bridge.reattach_sink()
+                                    
+                                cleanup_duration = (time.time() - start_cleanup_time) * 1000
+                                logging.info(f"✅ Barge-in cleanup complete ({cleanup_duration:.0f}ms)")
                             finally:
                                 # Always clear the flags so the next barge-in can fire
                                 sink_ref._barge_in_in_progress = False
                                 sink_ref._barge_in_stop_start_time = None
-                                cleanup_duration = (time.time() - start_cleanup_time) * 1000
-                                logging.info(f"✅ Barge-in cleanup complete ({cleanup_duration:.0f}ms)")
 
-                        asyncio.run_coroutine_threadsafe(_barge_in_stop(), self.bot.loop)
+                        # Fire cleanup in background (don't wait for it)
+                        asyncio.run_coroutine_threadsafe(_barge_in_cleanup(), self.bot.loop)
 
                         # Drop trigger packet — don't feed it into the transcription pipeline
                         return

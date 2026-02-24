@@ -185,7 +185,8 @@ class ConversationManager:
                 guild_id=guild_id,
                 conversation_history=self.conversation_history.get(channel_id, []),
                 input_image_bytes=input_image_bytes,
-                reminder_callback=schedule_reminder
+                reminder_callback=schedule_reminder,
+                is_voice=is_voice
             ):
                 if kind == "meta":
                     system_prompt = data.get("system_prompt", "Streamed")

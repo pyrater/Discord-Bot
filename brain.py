@@ -169,9 +169,12 @@ class CognitiveEngine:
         if is_voice:
             prompt += (
                 "\n\n### VOICE MODE ENABLED ###\n"
-                "1. Keep your response very short and punchy, like a real-time conversation.\n"
-                "2. Be succinct. Avoid long lists, bullet points, or complex formatting.\n"
-                "3. Speak naturally and avoid reading out large blocks of text.\n"
+                "CRITICAL: Keep ABSOLUTE MAXIMUM of 25 words. ONE to Two sentences only.\n"
+                "1. Respond in 1-2 short sentences max (20-25 words total).\n"
+                "2. NO lists, NO bullet points, NO multi-line responses.\n"
+                "3. Direct answer only. No explanations or elaboration.\n"
+                "4. Stay in character as Tars but be EXTREMELY concise.\n"
+                "5. Examples: 'Sure, no problem!' or 'Already handled that.' or 'Got it, working on it now.'"
             )
             
         return prompt
