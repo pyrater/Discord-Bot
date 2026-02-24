@@ -488,12 +488,12 @@ class MemoryEngine:
         )
 
 
-    def store_knowledge(self, text, source, title):
+    def store_knowledge(self, text, source, title, kb_type="knowledge"):
         """Stores technical knowledge in the knowledge base."""
         self.knowledge_collection.add(
             documents=[text],
             ids=[f"{source}_{datetime.now().timestamp()}"],
-            metadatas=[{"source": source, "title": title}]
+            metadatas=[{"source": source, "title": title, "type": kb_type}]
         )
 
     def search_knowledge(self, query, n_results=3):
@@ -503,6 +503,47 @@ class MemoryEngine:
             n_results=n_results
         )
         return results.get('documents', [[]])[0]
+
+    def wipe_knowledge(self, kb_type="all"):
+        """
+        Selectively deletes chunks from the knowledge base.
+        kb_type can be: 'all', 'code', or 'knowledge'.
+        """
+        try:
+            if kb_type == "all":
+                # Wipe the whole collection by deleting and re-creating
+                self.chroma_client.delete_collection("tars_knowledge")
+                self.knowledge_collection = self.chroma_client.get_or_create_collection(name="tars_knowledge")
+                logging.info("🧠 Memory Engine: Entire knowledge base wiped.")
+                return True
+
+            # Selective wipe based on type meta
+            # For data without 'type', we use heuristics
+            if kb_type == "code":
+                # Matches: type='code' OR source contains '/' but isn't a URL
+                where_filter = {
+                    "$or": [
+                        {"type": "code"},
+                        {"source": {"$not_contains": "http"}} # Heuristic for local files
+                    ]
+                }
+            elif kb_type == "knowledge":
+                # Matches: type='knowledge' OR source is a URL
+                where_filter = {
+                    "$or": [
+                        {"type": "knowledge"},
+                        {"source": {"$contains": "http"}} # Heuristic for web sources
+                    ]
+                }
+            else:
+                return False
+
+            self.knowledge_collection.delete(where=where_filter)
+            logging.info(f"🧠 Memory Engine: Wiped knowledge of type: {kb_type}")
+            return True
+        except Exception as e:
+            logging.error(f"❌ Selective knowledge wipe failed: {e}")
+            return False
 
     def get_recent_interactions(self, limit=50, hours=24):
         """Fetches recent interaction logs for the Dream Cycle."""

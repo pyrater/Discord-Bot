@@ -174,7 +174,8 @@ async def ingest():
                 mem.store_knowledge(
                     text=chunk,
                     source=url,
-                    title=f"Knowledge: {page_title} (Part {i+1})"
+                    title=f"Knowledge: {page_title} (Part {i+1})",
+                    kb_type="knowledge"
                 )
     
     mem.persist() # Signal ChromaDB to flush to disk

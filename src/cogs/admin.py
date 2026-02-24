@@ -4,6 +4,7 @@ import sqlite3
 import os
 import subprocess
 import sys
+import logging
 from src.bot_config import settings
 
 class Admin(commands.Cog):
@@ -39,7 +40,7 @@ class Admin(commands.Cog):
         
         # Categorization
         categories = {
-            "🛠️ Core": ["vibe", "reset", "forget", "nuke", "ingest", "cmd", "log"],
+            "🛠️ Core": ["vibe", "reset", "forget", "nuke", "ingest", "ingest_remove", "cmd", "log"],
             "⏰ Reminders": ["timers", "kill"],
             "🎤 Voice": ["join", "leave"],
             "🦾 AI Tools": ["tools", "recall"] # recall is in memory_cog but feels like a tool
@@ -238,6 +239,30 @@ class Admin(commands.Cog):
         
         await ctx.send(report)
     
+    @commands.hybrid_command(name="ingest_remove", description="Selectively clear ingested data: !ingest_remove [code|knowledge|all]. (Admin Only)")
+    @commands.has_permissions(administrator=True)
+    async def ingest_remove(self, ctx, target: str = "all"):
+        """Clears specific types of ingested data from the knowledge base."""
+        if not self.is_admin(ctx):
+            await ctx.send(f"🚫 Access Denied. You are not {settings.ADMIN_USER}.")
+            return
+            
+        target = target.lower()
+        if target not in ["code", "knowledge", "all"]:
+            await ctx.send("❓ Invalid target. Use `!ingest_remove code`, `!ingest_remove knowledge`, or `!ingest_remove all`.")
+            return
+
+        await ctx.send(f"🧹 **Clearing {target.capitalize()} Ingested Data...** stand by.")
+        
+        if hasattr(self.bot, 'memory_engine'):
+            success = self.bot.memory_engine.wipe_knowledge(kb_type=target)
+            if success:
+                await ctx.send(f"✅ **Wipe Complete.** {target.capitalize()} data has been removed from the knowledge base.")
+            else:
+                await ctx.send(f"❌ **Wipe Failed.** Please check the system logs.")
+        else:
+            await ctx.send("🧠 Memory Engine offline.")
+
     @commands.hybrid_command(name="ingest", description="Run ingestion scripts: !ingest [code|knowledge|all]. (Admin Only)")
     @commands.has_permissions(administrator=True)
     async def ingest(self, ctx, target: str = "knowledge"):
@@ -289,7 +314,7 @@ class Admin(commands.Cog):
         
         # 1. Grouped Commands
         categories = {
-            "🔴 ADMIN (Priority)": ["nuke", "ingest", "cmd", "vibe", "reset", "forget", "log"],
+            "🔴 ADMIN (Priority)": ["nuke", "ingest", "ingest_remove", "cmd", "vibe", "reset", "forget", "log"],
             "🎤 VOICE": ["join", "leave"],
             "⏰ REMINDERS": ["timers", "kill"],
             "🧠 AI COGNITIVE TOOLS": [] # Filled dynamically

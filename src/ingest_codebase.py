@@ -54,7 +54,8 @@ def ingest_codebase():
                 mem.store_knowledge(
                     text=f"FILE: {rel_path}\nCHUNKS: {i+1}/{len(chunks)}\n\n{chunk}",
                     source=rel_path,
-                    title=f"Codebase: {rel_path}"
+                    title=f"Codebase: {rel_path}",
+                    kb_type="code"
                 )
             
             total_chunks += len(chunks)
