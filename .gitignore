@@ -3,6 +3,10 @@ __pycache__/
 *.py[codz]
 *$py.class
 
+# Project runtime folders
+db/
+data/
+
 # C extensions
 *.so
 

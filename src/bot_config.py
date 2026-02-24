@@ -3,8 +3,8 @@ from dotenv import load_dotenv
 
 class Config:
     def __init__(self):
-        # Load .env from the same directory as this file
-        base_dir = os.path.dirname(os.path.abspath(__file__))
+        # bot_config.py is in src/, so go up one level to get root
+        base_dir = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
         load_dotenv(os.path.join(base_dir, ".env"))
         
         # Core Settings
@@ -20,11 +20,22 @@ class Config:
         # Paths
         self.LOCAL_MODEL_PATH = os.getenv("LOCAL_MODEL_PATH", "/app/models/google_gemma-3-270m-it-Q8_0.gguf")
         self.BASE_DIR = base_dir
-        self.DB_PATH = os.path.join(base_dir, "tars_state.db")
-        self.CHROMA_PATH = os.path.join(base_dir, "chroma_db")
+        # Store database and vector store under a dedicated `db/` directory
+        self.DB_PATH = os.path.join(base_dir, "db", "tars_state.db")
+        self.CHROMA_PATH = os.path.join(base_dir, "db", "chroma_db")
         self.PERSONA_PATH = os.path.join(base_dir, "chars", "TARS.json")
+        self.TEMPLATES_DIR = os.path.join(base_dir, "templates")
+        self.SD_API_TEMPLATE = os.path.join(self.TEMPLATES_DIR, "SD-API.json")
+        self.SD_IMG2IMG_TEMPLATE = os.path.join(self.TEMPLATES_DIR, "SD-IMG2IMG.json")
         self.ART_FILENAME = "tars_art.png"
-        self.LOG_FILE = os.path.join(base_dir, "bot.log")
+        # Log and other runtime artifacts go into `data/`
+        self.DATA_DIR = os.path.join(base_dir, "data")
+        os.makedirs(self.DATA_DIR, exist_ok=True)
+        self.LOG_FILE = os.path.join(self.DATA_DIR, "bot.log")
+        # Common runtime artifact paths
+        self.TRANSCRIPT_FILE = os.path.join(self.DATA_DIR, "transcript.md")
+        self.SPEAKER_REGISTRY = os.path.join(self.DATA_DIR, "speaker_registry.json")
+        self.AUDIO_DEBUG_LOG = os.path.join(self.DATA_DIR, "audio_debug.log")
         
         # Token Limits
         # Use MAX_TOKENS (explicit) or TOKEN_LIMIT (legacy/user preference)

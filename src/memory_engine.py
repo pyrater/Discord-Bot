@@ -11,11 +11,14 @@ from functools import lru_cache
 import contextlib
 import shutil
 
+from src.bot_config import settings
+
+
 class MemoryEngine:
     def __init__(self, db_path=None, chroma_path=None):
-        base_dir = os.path.dirname(os.path.abspath(__file__))
-        self.db_path = db_path or os.path.join(base_dir, "tars_state.db")
-        self.chroma_path = chroma_path or os.path.join(base_dir, "chroma_db")
+        # Prefer explicit parameters, otherwise use centralized settings
+        self.db_path = db_path or settings.DB_PATH
+        self.chroma_path = chroma_path or settings.CHROMA_PATH
         self.encoding = tiktoken.get_encoding("cl100k_base")
         self.fact_queue = asyncio.Queue()
         

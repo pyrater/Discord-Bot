@@ -17,7 +17,7 @@ import math
 import sys
 import subprocess
 import base64
-from bot_config import settings
+from src.bot_config import settings
 # Force environment cleanup for search
 try:
     from ddgs import DDGS
@@ -48,7 +48,7 @@ except ImportError:
 
 class CognitiveEngine:
     def __init__(self, memory_engine, llm_client, model_name, comfy_url, local_llm_path="/app/models/google_gemma-3-270m-it-Q8_0.gguf", lazy_load=False):
-        self.base_dir = os.path.dirname(os.path.abspath(__file__))
+        self.base_dir = settings.BASE_DIR
         self.memory_engine = memory_engine
         self.ai_client = llm_client
         self.model_name = model_name
@@ -239,9 +239,9 @@ class CognitiveEngine:
         try:
             workflow = {}
             # Try to find a template
-            tpl_path = os.path.join(self.base_dir, "SD-API.json")
-            if input_image_bytes and os.path.exists(os.path.join(self.base_dir, "SD-IMG2IMG.json")):
-                 tpl_path = os.path.join(self.base_dir, "SD-IMG2IMG.json")
+            tpl_path = settings.SD_API_TEMPLATE
+            if input_image_bytes and os.path.exists(settings.SD_IMG2IMG_TEMPLATE):
+                 tpl_path = settings.SD_IMG2IMG_TEMPLATE
             
             if os.path.exists(tpl_path):
                 with open(tpl_path, "r") as f:

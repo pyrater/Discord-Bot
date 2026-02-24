@@ -4,7 +4,7 @@ import sqlite3
 import os
 import subprocess
 import sys
-from bot_config import settings
+from src.bot_config import settings
 
 class Admin(commands.Cog):
     def __init__(self, bot):

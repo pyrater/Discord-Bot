@@ -4,7 +4,7 @@ import asyncio
 import logging
 import sqlite3
 from datetime import datetime, timedelta
-from bot_config import settings
+from src.bot_config import settings
 
 class Reminders(commands.Cog):
     def __init__(self, bot):

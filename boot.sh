@@ -1,3 +1,4 @@
+export PYTHONPATH="${PYTHONPATH}:/app/applications/tars"
 #!/bin/bash
 
 # 1. Define paths
@@ -58,7 +59,7 @@ echo "📊 Launching Dashboard Supervisor..."
 (
 while true; do
     echo "🚀 Starting Dashboard Process..."
-    python /app/applications/tars/app.py
+    python -m src.app
     echo "⚠️ Dashboard exited. Restarting in 2s..."
     sleep 2
 done
@@ -73,7 +74,8 @@ while true; do
     else
         echo "🚀 Starting Bot Process..."
         # -u keeps logs unbuffered so they show up in the log file immediately
-        python -u /app/applications/tars/script.py >> /app/applications/tars/bot.log 2>&1
+        # Redirect runtime logs into the `data/` directory
+        python -u -m src.script >> /app/applications/tars/data/bot.log 2>&1
         
         EXIT_CODE=$?
         echo "⚠️ Bot process exited with code $EXIT_CODE."

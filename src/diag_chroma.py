@@ -1,8 +1,7 @@
 import chromadb
-import os
+from src.bot_config import settings
 
-base_dir = os.path.dirname(os.path.abspath(__file__))
-chroma_path = os.path.join(base_dir, "chroma_db")
+chroma_path = settings.CHROMA_PATH
 
 print(f"📂 Checking ChromaDB at: {chroma_path}")
 client = chromadb.PersistentClient(path=chroma_path)

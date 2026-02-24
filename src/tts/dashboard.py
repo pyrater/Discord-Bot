@@ -3,7 +3,7 @@ import datetime
 import threading
 from flask import Flask, jsonify, render_template_string
 from flask_cors import CORS
-from config import TRANSCRIPTION_HISTORY, TRANSCRIPTION_LOCK, TRANSCRIPT_FILE
+from .config import TRANSCRIPTION_HISTORY, TRANSCRIPTION_LOCK, TRANSCRIPT_FILE
 
 app = Flask(__name__)
 CORS(app)

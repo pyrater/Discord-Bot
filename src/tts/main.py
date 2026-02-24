@@ -9,10 +9,10 @@ import scipy.spatial.distance as dist
 import collections
 
 # Local Imports
-import config
-from speaker_manager import VoiceSubagent, load_registry, enroll_speaker, save_registry
-from transcription_engine import TranscriptionEngine, transcription_queue
-from dashboard import start_dashboard, log_transcript
+from . import config
+from .speaker_manager import VoiceSubagent, load_registry, enroll_speaker, save_registry
+from .transcription_engine import TranscriptionEngine, transcription_queue
+from .dashboard import start_dashboard, log_transcript
 
 # Domain Imports
 from diart import SpeakerDiarization

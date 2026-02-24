@@ -9,10 +9,10 @@ import os
 import imageio_ffmpeg
 from datetime import datetime, timedelta
 from typing import Optional, List, Dict, Any, Callable, Union, Tuple
-from bot_config import settings
-from voice_engine import AudioManager
-from memory_engine import MemoryEngine
-from brain import CognitiveEngine
+from src.bot_config import settings
+from src.voice_engine import AudioManager
+from src.memory_engine import MemoryEngine
+from src.brain import CognitiveEngine
 
 class AudioQueue:
     """

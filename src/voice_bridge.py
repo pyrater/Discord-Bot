@@ -18,11 +18,11 @@ if TTS_DIR not in sys.path:
     sys.path.insert(0, TTS_DIR)
 
 # Ensure dependencies are loaded
-import tts.transcription_engine
-import tts.speaker_manager
-import tts.config as tts_config
-from tts.transcription_engine import TranscriptionEngine, transcription_queue
-from tts.speaker_manager import VoiceSubagent
+import src.tts.transcription_engine
+import src.tts.speaker_manager
+import src.tts.config as tts_config
+from src.tts.transcription_engine import TranscriptionEngine, transcription_queue
+from src.tts.speaker_manager import VoiceSubagent
 
 # Constants
 DISCORD_SAMPLE_RATE = 48000

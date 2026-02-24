@@ -10,14 +10,16 @@ import json
 import html
 import chromadb
 from dotenv import load_dotenv
+from src.bot_config import settings
 
-# Absolute paths
+# Absolute paths (prefer central settings)
 BASE_DIR = os.path.dirname(os.path.abspath(__file__))
-DB_PATH = os.path.join(BASE_DIR, "tars_state.db")
-CHROMA_PATH = os.path.join(BASE_DIR, "chroma_db")
-LOG_FILE = os.path.join(BASE_DIR, "bot.log")
-
 load_dotenv(os.path.join(BASE_DIR, ".env"))
+
+# Use configured paths from settings so they reflect the reorganized layout
+DB_PATH = settings.DB_PATH
+CHROMA_PATH = settings.CHROMA_PATH
+LOG_FILE = settings.LOG_FILE
 
 def get_audit_logs():
     if not os.path.exists(DB_PATH): return pd.DataFrame()

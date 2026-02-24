@@ -11,7 +11,9 @@ import multiprocessing
 audio_logger = logging.getLogger("audio_debug")
 audio_logger.setLevel(logging.INFO)
 if not audio_logger.handlers:
-    fh = logging.FileHandler("audio_debug.log")
+    from src.bot_config import settings
+    os.makedirs(settings.DATA_DIR, exist_ok=True)
+    fh = logging.FileHandler(settings.AUDIO_DEBUG_LOG)
     fh.setFormatter(logging.Formatter('%(asctime)s - %(message)s', datefmt="%d%H%M%b%y"))
     audio_logger.addHandler(fh)
 
@@ -36,8 +38,10 @@ COMPUTE_TYPE = "int8"
 EMBEDDING_DIM = 512 # Standard for pyannote/embedding
 
 # --- PERSISTENCE ---
-REGISTRY_FILE = "speaker_registry.json"
-TRANSCRIPT_FILE = "transcript.md"
+# Store runtime artifacts in `data/`
+from src.bot_config import settings
+REGISTRY_FILE = settings.SPEAKER_REGISTRY
+TRANSCRIPT_FILE = settings.TRANSCRIPT_FILE
 
 # --- GLOBAL STATE & LOCKS ---
 TOTAL_SAMPLES_CAPTURED = 0

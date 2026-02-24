@@ -1,7 +1,7 @@
 import os
 import glob
-from memory_engine import MemoryEngine
-from bot_config import settings
+from src.memory_engine import MemoryEngine
+from src.bot_config import settings
 import logging
 
 # Setup Logging
@@ -22,8 +22,9 @@ def ingest_codebase():
     # Using glob for simplicity, excluding venv/deps if any
     files = glob.glob(os.path.join(ROOT_DIR, "**", "*.py"), recursive=True)
     
-    # Filter out unwanted directories
-    ignore_dirs = {"chroma_db", "__pycache__", ".git", "deps", "venv"}
+    # Filter out unwanted directories (include actual chroma path basename)
+    chroma_basename = os.path.basename(settings.CHROMA_PATH)
+    ignore_dirs = {chroma_basename, "__pycache__", ".git", "deps", "venv"}
     files = [f for f in files if not any(d in f.split(os.sep) for d in ignore_dirs)]
     
     logging.info(f"📂 Found {len(files)} Python files to ingest.")

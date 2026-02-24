@@ -7,17 +7,18 @@ from flask import Flask, render_template, request, session, redirect, url_for, j
 import hmac
 import psutil
 import subprocess
-from tars_utils import (
+from src.tars_utils import (
     get_mood_metrics, get_audit_logs, get_mood_paths, 
     get_graph_data, get_knowledge_data, get_memories, get_total_counts,
     parse_prompt, BASE_DIR, DB_PATH, CHROMA_PATH
 )
-from brain import CognitiveEngine
-from memory_engine import MemoryEngine
-from bot_config import settings
+from src.brain import CognitiveEngine
+from src.memory_engine import MemoryEngine
+from src.bot_config import settings
 import asyncio
 
-app = Flask(__name__)
+# Flask app with explicit template folder (since app is in src/, we need to go up to root)
+app = Flask(__name__, template_folder=os.path.join(os.path.dirname(os.path.dirname(os.path.abspath(__file__))), 'templates'))
 app.secret_key = "TARS_NEXUS_SECRET_KEY_2026" # Persistent key to avoid 401 on reboot
 
 # Cache for Memory Engine only
@@ -288,7 +289,8 @@ def api_cli_logs():
     if not check_auth(): return jsonify({"error": "unauthorized"}), 401
     try:
         import os
-        log_path = "/app/applications/tars/bot.log"
+        # Use centralized log path from settings (placed under data/)
+        log_path = settings.LOG_FILE
         if not os.path.exists(log_path):
             return jsonify({"lines": ["[SYSTEM] Log file not found."]})
             

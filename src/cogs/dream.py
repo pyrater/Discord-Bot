@@ -4,7 +4,7 @@ import sqlite3
 import json
 import io
 import logging
-from bot_config import settings
+from src.bot_config import settings
 
 class Dream(commands.Cog):
     def __init__(self, bot):

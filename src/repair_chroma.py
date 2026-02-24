@@ -1,10 +1,10 @@
 import chromadb
 import os
 import shutil
+from src.bot_config import settings
 
 # Paths
-BASE_DIR = os.path.dirname(os.path.abspath(__file__))
-CHROMA_PATH = os.path.join(BASE_DIR, "chroma_db")
+CHROMA_PATH = settings.CHROMA_PATH
 COLLECTION_NAME = "user_memories"
 
 def repair():
@@ -48,7 +48,8 @@ def repair():
     except Exception as e:
         print(f"❌ REPAIR FAILED: {e}")
         print("💡 Suggestion: If extraction failed, the index might be beyond simple repair.")
-        print("   Consider deleting the 'chroma_db' folder and re-running ingestion if you have backups.")
+        from bot_config import settings
+        print(f"   Consider deleting the '{settings.CHROMA_PATH}' folder and re-running ingestion if you have backups.")
 
 if __name__ == "__main__":
     repair()

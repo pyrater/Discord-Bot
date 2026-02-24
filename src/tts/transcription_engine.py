@@ -2,7 +2,7 @@ import multiprocessing
 import queue
 import time
 from faster_whisper import WhisperModel
-from config import audio_logger, WHISPER_MODEL, COMPUTE_TYPE
+from .config import audio_logger, WHISPER_MODEL, COMPUTE_TYPE
 
 # Global transcription queue (Now a Multiprocessing Queue)
 transcription_queue = multiprocessing.Queue()

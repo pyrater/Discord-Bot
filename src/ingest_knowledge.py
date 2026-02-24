@@ -4,8 +4,8 @@ import logging
 import asyncio
 import httpx
 from bs4 import BeautifulSoup
-from memory_engine import MemoryEngine
-from bot_config import settings
+from src.memory_engine import MemoryEngine
+from src.bot_config import settings
 from urllib.parse import urljoin, urlparse
 
 # Setup Logging

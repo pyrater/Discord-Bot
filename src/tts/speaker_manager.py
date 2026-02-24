@@ -1,15 +1,13 @@
 import json
 import os
 import numpy as np
-import numpy as np
 try:
     import sounddevice as sd
     import torch
 except ImportError:
     sd = None
     torch = None
-import config
-from config import audio_logger, SAMPLE_RATE, REGISTRY_FILE, ENROLLED_SPEAKERS, speaker_lock, subagents, TRANSCRIPTION_HISTORY, known_id_map, EMBEDDING_DIM
+from .config import audio_logger, SAMPLE_RATE, REGISTRY_FILE, ENROLLED_SPEAKERS, speaker_lock, subagents, TRANSCRIPTION_HISTORY, known_id_map, EMBEDDING_DIM, NORMALIZATION_TARGET
 
 class VoiceSubagent:
     def __init__(self, name):
@@ -25,7 +23,7 @@ class VoiceSubagent:
         """Applies peak normalization to the audio chunk."""
         max_val = np.max(np.abs(audio_chunk))
         if max_val > 0:
-            target = 10 ** (config.NORMALIZATION_TARGET / 20)
+            target = 10 ** (NORMALIZATION_TARGET / 20)
             return audio_chunk * (target / max_val)
         return audio_chunk
 
@@ -43,7 +41,7 @@ class VoiceSubagent:
             self.audio_buffer.extend(norm_chunk.tolist() if isinstance(norm_chunk, np.ndarray) else norm_chunk)
             self.last_ts = end_time # Update timestamp for silence detection
             
-        buffer_len_sec = len(self.audio_buffer) / config.SAMPLE_RATE
+        buffer_len_sec = len(self.audio_buffer) / SAMPLE_RATE
         # We handle intermediate chunks (every 4s) vs final flushes
         if buffer_len_sec >= 4.0 or (force_flush and buffer_len_sec > 0.1):
             audio_to_send = np.array(self.audio_buffer, dtype=np.float32)

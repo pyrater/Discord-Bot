@@ -40,11 +40,11 @@ import nacl
 BASE_DIR = os.path.dirname(os.path.abspath(__file__))
 sys.path.insert(0, os.path.join(BASE_DIR, 'deps'))
 
-from voice_bridge import VoiceBridge 
-from bot_config import settings
-import memory_engine as mem_engine_module
-import brain as brain_module
-import voice_engine as v_engine
+from src.voice_bridge import VoiceBridge 
+from src.bot_config import settings
+from src import memory_engine as mem_engine_module
+from src import brain as brain_module
+from src import voice_engine as v_engine
 
 voice_engine = v_engine
 
@@ -98,7 +98,7 @@ transformers_logging.disable_progress_bar()
 import tiktoken
 
 # --- 1. CONFIG & SYSTEM SETUP ---
-from bot_config import settings
+from src.bot_config import settings
 # load_dotenv handled in bot_config.py
 
 from functools import lru_cache
@@ -112,9 +112,9 @@ def count_tokens(text):
 # Constants from Settings
 # settings.DISCORD_TOKEN, etc are used directly below.
 
-from memory_engine import MemoryEngine
-from brain import CognitiveEngine
-from conversation_manager import ConversationManager
+from src.memory_engine import MemoryEngine
+from src.brain import CognitiveEngine
+from src.conversation_manager import ConversationManager
 
 # --- 2. INITIALIZE ENGINES ---
 # conversation_history & last_bot_message_time moved to ConversationManager
@@ -148,7 +148,7 @@ emotion_classifier = pipeline(
 )
 
 # --- VOICE ENGINE SETUP ---
-from voice_engine import VoiceEngine
+from src.voice_engine import VoiceEngine
 logging.info("🎤 Initializing Voice Engine...")
 voice_engine = VoiceEngine()
 # EAGER LOAD VOICE MODEL
@@ -170,9 +170,8 @@ conversation_manager = ConversationManager(
 )
 
 # Construct base path for robust file loading
-BASE_DIR = os.path.dirname(os.path.abspath(__file__))
-# UPDATED: Point to TARS.json
-CHAR_FILE = os.path.join(BASE_DIR, "chars", "TARS.json")
+# Use centralized settings instead of __file__ to ensure correct paths after restructuring
+CHAR_FILE = os.path.join(settings.BASE_DIR, "chars", "TARS.json")
 
 with open(CHAR_FILE, "r", encoding="utf-8") as f:
     char_data = json.load(f)
@@ -207,7 +206,7 @@ async def on_ready():
     
     # Load Cogs
     # Only loading Voice as requested (Admin, Dream, Memory disabled)
-    initial_extensions = ["cogs.voice", "cogs.admin", "cogs.reminders", "cogs.tools_cog"]
+    initial_extensions = ["src.cogs.voice", "src.cogs.admin", "src.cogs.reminders", "src.cogs.tools_cog"]
     for extension in initial_extensions:
         try:
             await bot.load_extension(extension)
