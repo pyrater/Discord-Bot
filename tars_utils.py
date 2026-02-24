@@ -1,6 +1,10 @@
+import os
+# Disable telemetry BEFORE other imports
+os.environ['CHROMA_TELEMETRY'] = 'False'
+os.environ['ANONYMIZED_TELEMETRY'] = 'False'
+
 import sqlite3
 import pandas as pd
-import os
 import psutil
 import json
 import html

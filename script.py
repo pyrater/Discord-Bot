@@ -1,6 +1,14 @@
 # STANDARD IMPORTS
-import sys
 import os
+import sys
+
+# --- CONSOLIDATED TELEMETRY & NOISE SUPPRESSION ---
+# Must be set BEFORE imports to take effect
+os.environ['CHROMA_TELEMETRY'] = 'False' 
+os.environ['ANONYMIZED_TELEMETRY'] = 'False'
+os.environ["TQDM_DISABLE"] = "1"
+os.environ["TRANSFORMERS_VERBOSITY"] = "error"
+
 import time
 import json
 import sqlite3
@@ -65,9 +73,7 @@ logging.basicConfig(
 
 # Ensure telemetry is disabled BEFORE chromadb initialization
 # Disable noisy progress bars from models
-os.environ['CHROMA_TELEMETRY'] = 'False' 
-os.environ["TQDM_DISABLE"] = "1"
-os.environ["TRANSFORMERS_VERBOSITY"] = "error"
+# (Moved to top of file)
 
 from discord.ext import commands
 from openai import AsyncOpenAI

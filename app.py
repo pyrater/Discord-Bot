@@ -1,5 +1,9 @@
-from flask import Flask, render_template, request, session, redirect, url_for, jsonify
 import os
+# Disable telemetry BEFORE other imports
+os.environ['CHROMA_TELEMETRY'] = 'False'
+os.environ['ANONYMIZED_TELEMETRY'] = 'False'
+
+from flask import Flask, render_template, request, session, redirect, url_for, jsonify
 import hmac
 import psutil
 import subprocess
