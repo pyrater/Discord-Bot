@@ -26,6 +26,8 @@ class Voice(commands.Cog):
             # Attach the sink
             # Ensure bot.voice_bridge is set in main script
             if hasattr(self.bot, 'voice_bridge'):
+                # Store reference for robust re-attachment
+                self.bot.voice_bridge.active_vc = ctx.voice_client
                 ctx.voice_client.listen(self.bot.voice_bridge.sink)
                 await ctx.send(f"🎤 Connected to **{channel.name}**. I'm listening...")
             else:

@@ -36,7 +36,7 @@ class TranscriptionEngine:
                     audio_chunk, 
                     beam_size=1, # Speed Optimization: Greedy search
                     vad_filter=True, # Remove silence/noise
-                    vad_parameters=dict(min_silence_duration_ms=500),
+                    vad_parameters=dict(min_silence_duration_ms=800),
                     language="en"
                 )
                 

@@ -196,6 +196,8 @@ async def process_voice_queue():
     """Background task to read from voice_bridge and trigger bot."""
     logging.info("👂 Voice Listener Validation Loop Running...")
     
+    current_voice_task = None  # Track the active voice interaction task
+    
     while True:
         if voice_result_queue is None:
             await asyncio.sleep(1)
@@ -257,13 +259,32 @@ async def process_voice_queue():
                         logging.info(f"🧠 Gatekeeper Check: PASSED for '{text}'")
                     else:
                         logging.info(f"🧠 Gatekeeper Check: IGNORED '{text}'")
+                else:
+                    logging.info(f"🧠 Gateway Bypassed: '{text}' matched Wake Words.")
 
             if should_reply and target_guild and target_channel and target_member:
                 logging.info(f"🤖 Voice Triggered ({'Wake Word' if is_wake else 'Smart Context'}) by {speaker_name}: {text}")
-                await conversation_manager.handle_interaction(target_member, text, target_channel, target_guild, is_voice=True)
+                
+                # Cancel any in-progress voice interaction (barge-in recovery)
+                if current_voice_task and not current_voice_task.done():
+                    logging.info(f"🛑 [Barge-In Recovery] Cancelling active voice task for {speaker_name}.")
+                    current_voice_task.cancel()
+                    # Stop any currently playing audio
+                    vc = target_guild.voice_client
+                    if vc and vc.is_playing():
+                        logging.info("🔊 [Barge-In] Force stopping voice client playback.")
+                        vc.stop()
+                    # Brief wait for cancellation to propagate
+                    await asyncio.sleep(0.1)
+                
+                # Launch interaction as a cancellable task (non-blocking)
+                logging.info(f"🚀 [Voice Task] Starting handle_interaction task for {speaker_name}")
+                current_voice_task = asyncio.create_task(
+                    conversation_manager.handle_interaction(target_member, text, target_channel, target_guild, is_voice=True)
+                )
 
         except Exception as e:
-            logging.error(f"Voice Processor Error: {e}")
+            logging.error(f"❌ Voice Processor Error: {e}")
             await asyncio.sleep(1)
 
 @bot.event

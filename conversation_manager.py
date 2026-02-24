@@ -23,6 +23,7 @@ class AudioQueue:
         self.vc: discord.VoiceClient = voice_client
         self.queue: asyncio.Queue[Tuple[discord.AudioSource, Optional[Callable[[Optional[Exception]], None]]]] = asyncio.Queue()
         self.is_playing: bool = False
+        self._stopped: bool = False
         self.loop = asyncio.get_event_loop()
 
     async def add(self, source: discord.AudioSource, cleanup: Optional[Callable[[Optional[Exception]], None]] = None) -> None:
@@ -31,7 +32,7 @@ class AudioQueue:
             self.play_next()
 
     def play_next(self) -> None:
-        if self.queue.empty():
+        if self._stopped or self.queue.empty():
             self.is_playing = False
             return
         
@@ -58,6 +59,18 @@ class AudioQueue:
             if cleanup: cleanup(e)
             self.play_next()
 
+    def stop(self):
+        """Stop all playback and clear pending items."""
+        self._stopped = True
+        # Drain the queue and clean up any pending audio files
+        while not self.queue.empty():
+            try:
+                _, cleanup = self.queue.get_nowait()
+                if cleanup: cleanup(None)
+            except asyncio.QueueEmpty:
+                break
+        self.is_playing = False
+
 class ConversationManager:
     def __init__(self, bot: commands.Bot, brain: CognitiveEngine, memory_engine: MemoryEngine, voice_engine: Any, ai_client: Any, emotion_classifier: Any):
         self.bot = bot
@@ -71,6 +84,7 @@ class ConversationManager:
         self.conversation_history: Dict[str, List[str]] = {}
         self.last_bot_message_time: Dict[str, datetime] = {}
         self.ffmpeg_path: str = imageio_ffmpeg.get_ffmpeg_exe()
+        self.active_audio_queue = None  # Current voice AudioQueue (for barge-in access)
 
     def check_cooldown(self, channel_id: str, seconds: int = 8) -> bool:
         """Returns True if the bot is on cooldown for this channel."""
@@ -123,6 +137,15 @@ class ConversationManager:
             
             if is_voice and guild.voice_client:
                 audio_queue = AudioQueue(guild.voice_client)
+                self.active_audio_queue = audio_queue  # Expose for barge-in access
+                # Play "Computing..." acknowledgment immediately as first queue item
+                try:
+                    ack_audio = await asyncio.to_thread(self.voice_engine.synthesize, "Computing...")
+                    if ack_audio:
+                        tmp_path, cleanup_fn = AudioManager.create_async_audio_file(ack_audio.read())
+                        await audio_queue.add(discord.FFmpegPCMAudio(tmp_path, executable=self.ffmpeg_path), cleanup_fn)
+                except Exception as ack_err:
+                    logging.warning(f"⚠️ Voice ack failed (non-critical): {ack_err}")
 
             async for kind, data in self.brain.process_interaction_stream(
                 user_id=user_id,
@@ -222,8 +245,19 @@ class ConversationManager:
                 # Recency
                 self.last_bot_message_time[channel_id] = datetime.now()
 
+        except asyncio.CancelledError:
+            logging.info("🛑 Voice interaction cancelled (barge-in).")
+            # Stop the AudioQueue so queued sentences don't keep playing
+            if audio_queue:
+                audio_queue.stop()
+            self.active_audio_queue = None
+            return
         except Exception as e:
             logging.error(f"Handle Interaction Error: {e}")
+        finally:
+            # Always clear the active queue reference when done
+            if self.active_audio_queue is audio_queue:
+                self.active_audio_queue = None
 
     async def _persist_interaction(self, user_id, username, prompt, response, guild_id, channel_id, full_prompt, memories, emo_results=None):
         """Persists the interaction to the database and vector store."""
