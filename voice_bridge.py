@@ -156,7 +156,7 @@ class DiscordAudioSink(voice_recv.AudioSink):
             
             current_time = time.time()
             if len(audio_16k) > 0:
-                logging.info(f"Packet from {username} ({len(audio_16k)} samples)")
+                logging.debug(f"Packet from {username} ({len(audio_16k)} samples)")
             agent.handle_speech(
                 audio_chunk=audio_16k,
                 end_time=current_time,
@@ -208,7 +208,7 @@ class VoiceBridge:
                         if ack_audio:
                             from voice_engine import AudioManager
                             tmp_path, cleanup_fn = AudioManager.create_async_audio_file(ack_audio.read())
-                            self.active_vc.play(discord.FFmpegPCMAudio(tmp_path), after=cleanup_fn)
+                            self.active_vc.play(discord.FFmpegPCMAudio(tmp_path, before_options="-loglevel panic"), after=cleanup_fn)
                             logging.info("🔊 Re-attachment 'beep' played.")
                     except Exception as beep_err:
                         logging.warning(f"⚠️ Re-attach beep failed: {beep_err}")

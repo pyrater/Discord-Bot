@@ -83,7 +83,7 @@ class VoiceEngine:
             # Check buffer size
             wav_buffer.seek(0)
             size = wav_buffer.getbuffer().nbytes
-            logging.info(f"🗣️ Generated Audio Size: {size} bytes")
+            logging.debug(f"🗣️ Generated Audio Size: {size} bytes")
             
             if size < 100:
                 logging.warning("⚠️ Audio buffer suspiciously small!")

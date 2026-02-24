@@ -12,7 +12,7 @@ audio_logger = logging.getLogger("audio_debug")
 audio_logger.setLevel(logging.INFO)
 if not audio_logger.handlers:
     fh = logging.FileHandler("audio_debug.log")
-    fh.setFormatter(logging.Formatter('%(asctime)s - %(message)s'))
+    fh.setFormatter(logging.Formatter('%(asctime)s - %(message)s', datefmt="%d%H%M%b%y"))
     audio_logger.addHandler(fh)
 
 # --- ENVIRONMENT & AUTH ---

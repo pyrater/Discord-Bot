@@ -143,7 +143,7 @@ class ConversationManager:
                     ack_audio = await asyncio.to_thread(self.voice_engine.synthesize, "Computing...")
                     if ack_audio:
                         tmp_path, cleanup_fn = AudioManager.create_async_audio_file(ack_audio.read())
-                        await audio_queue.add(discord.FFmpegPCMAudio(tmp_path, executable=self.ffmpeg_path), cleanup_fn)
+                        await audio_queue.add(discord.FFmpegPCMAudio(tmp_path, executable=self.ffmpeg_path, before_options="-loglevel panic"), cleanup_fn)
                 except Exception as ack_err:
                     logging.warning(f"⚠️ Voice ack failed (non-critical): {ack_err}")
 
@@ -179,7 +179,7 @@ class ConversationManager:
                                     stream = await asyncio.to_thread(self.voice_engine.synthesize, clean_text)
                                     if stream:
                                         tmp_path, cleanup_fn = AudioManager.create_async_audio_file(stream.read())
-                                        await audio_queue.add(discord.FFmpegPCMAudio(tmp_path, executable=self.ffmpeg_path), cleanup_fn)
+                                        await audio_queue.add(discord.FFmpegPCMAudio(tmp_path, executable=self.ffmpeg_path, before_options="-loglevel panic"), cleanup_fn)
                                sentence_buffer = ""
 
                     # Send to Discord (Regular Text)
@@ -211,7 +211,7 @@ class ConversationManager:
                            stream = await asyncio.to_thread(self.voice_engine.synthesize, clean_text)
                            if stream:
                                tmp_path, cleanup_fn = AudioManager.create_async_audio_file(stream.read())
-                               await audio_queue.add(discord.FFmpegPCMAudio(tmp_path, executable=self.ffmpeg_path), cleanup_fn)
+                               await audio_queue.add(discord.FFmpegPCMAudio(tmp_path, executable=self.ffmpeg_path, before_options="-loglevel panic"), cleanup_fn)
 
             # 6. Update History
             if full_response_text:

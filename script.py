@@ -44,20 +44,30 @@ class NoCryptoErrorFilter(logging.Filter):
 logging.getLogger("discord.ext.voice_recv.reader").addFilter(NoCryptoErrorFilter())
 logging.getLogger("discord.ext.voice_recv.reader").setLevel(logging.ERROR)
 
-# Configure Root Logger (Rotating)
+
+# --- INTERNAL LOG SUPPRESSION ---
+# These messages come from the discord.py library itself (discord/player.py).
+logging.getLogger("discord.player").setLevel(logging.WARNING)
+logging.getLogger("discord").setLevel(logging.WARNING)
+
+
+# Configure Root Logger (Stream only, boot.sh handles file redirection)
 logging.basicConfig(
     level=logging.INFO, 
     format="%(asctime)s [%(levelname)s]: %(message)s",
+    datefmt="%d%H%M%b%y",
     handlers=[
-        logging.StreamHandler(sys.stdout),
-        logging.handlers.RotatingFileHandler(settings.LOG_FILE, maxBytes=5*1024*1024, backupCount=3, encoding='utf-8')
+        logging.StreamHandler(sys.stdout)
     ]
 )
 
 
 
 # Ensure telemetry is disabled BEFORE chromadb initialization
+# Disable noisy progress bars from models
 os.environ['CHROMA_TELEMETRY'] = 'False' 
+os.environ["TQDM_DISABLE"] = "1"
+os.environ["TRANSFORMERS_VERBOSITY"] = "error"
 
 from discord.ext import commands
 from openai import AsyncOpenAI
@@ -65,6 +75,8 @@ from datetime import datetime
 from dotenv import load_dotenv
 from llama_cpp import Llama
 from transformers import pipeline
+import transformers.utils.logging as transformers_logging
+transformers_logging.set_verbosity_error()
 import tiktoken
 
 # --- 1. CONFIG & SYSTEM SETUP ---
