@@ -1,0 +1,2453 @@
+<!DOCTYPE html>
+<html lang="en">
+
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
+    <title>TARS // NEXUS CORE</title>
+    <style>
+        @import url('https://fonts.googleapis.com/css2?family=Share+Tech+Mono&family=Rajdhani:wght@500;700&display=swap');
+
+        :root {
+            --bg: #040609;
+            --panel-bg: rgba(8, 12, 18, 0.92);
+            --panel-border: rgba(0, 229, 255, 0.2);
+            --text-main: #e0e6ed;
+            --text-dim: #6b8299;
+            --cyan: #00e5ff;
+            --magenta: #ff00ff;
+            --green: #39ff14;
+            --orange: #ffb700;
+        }
+
+        * {
+            box-sizing: border-box;
+            margin: 0;
+            padding: 0;
+            -webkit-tap-highlight-color: transparent;
+        }
+
+        html,
+        body {
+            width: 100%;
+            height: 100%;
+            overflow: hidden;
+            background: var(--bg);
+            color: var(--text-main);
+            font-family: 'Share Tech Mono', monospace;
+            touch-action: none;
+        }
+
+        /* ── CANVAS ── */
+        canvas {
+            position: fixed;
+            top: 0;
+            left: 0;
+        }
+
+        #c-bg {
+            z-index: 1;
+        }
+
+        #c-main {
+            z-index: 2;
+        }
+
+        #c-fx {
+            z-index: 3;
+            pointer-events: none;
+            mix-blend-mode: screen;
+        }
+
+        #scanlines {
+            position: fixed;
+            inset: 0;
+            z-index: 4;
+            pointer-events: none;
+            background: repeating-linear-gradient(0deg, transparent, transparent 2px,
+                    rgba(0, 229, 255, 0.018) 2px, rgba(0, 229, 255, 0.018) 4px);
+        }
+
+        /* ── APP SHELL ── */
+        #app {
+            position: fixed;
+            inset: 0;
+            z-index: 10;
+            display: flex;
+            flex-direction: column;
+        }
+
+        /* ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+           IMPROVEMENT 1: COLLAPSING HEADER
+           Header smoothly shrinks when scrolling down,
+           exposing more canvas. Restores on scroll up.
+        ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━ */
+        header {
+            flex-shrink: 0;
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+            padding: 12px 16px 10px;
+            border-bottom: 1px solid var(--panel-border);
+            background: linear-gradient(to bottom, rgba(0, 0, 0, 0.97), rgba(0, 0, 0, 0.6));
+            backdrop-filter: blur(10px);
+            transition: padding 0.3s ease, min-height 0.3s ease;
+            min-height: 56px;
+            overflow: hidden;
+            position: relative;
+        }
+
+        header.collapsed {
+            padding: 6px 16px;
+            min-height: 36px;
+        }
+
+        header.collapsed .hm-val {
+            font-size: 11px;
+        }
+
+        header.collapsed .brand {
+            font-size: 14px;
+        }
+
+        /* ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+           IMPROVEMENT 2: SWIPE PROGRESS BAR
+           Thin neon line at top shows drag progress
+           between pages and animates on transition.
+        ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━ */
+        #swipe-progress {
+            height: 2px;
+            background: rgba(0, 229, 255, 0.1);
+            flex-shrink: 0;
+            position: relative;
+            overflow: hidden;
+        }
+
+        #swipe-progress-fill {
+            position: absolute;
+            top: 0;
+            left: 0;
+            height: 100%;
+            background: linear-gradient(90deg, var(--cyan), var(--magenta));
+            box-shadow: 0 0 8px var(--cyan);
+            transition: width 0.35s cubic-bezier(0.25, 0.8, 0.25, 1);
+            width: 25%;
+            /* Updated by JS based on currentPage/TOTAL */
+        }
+
+        .brand {
+            font-family: 'Rajdhani', sans-serif;
+            font-size: 18px;
+            font-weight: 700;
+            letter-spacing: 3px;
+            transition: font-size 0.3s ease;
+        }
+
+        .brand span {
+            color: var(--cyan);
+            text-shadow: 0 0 10px var(--cyan);
+        }
+
+        .header-metrics {
+            display: flex;
+            gap: 15px;
+            align-items: center;
+            padding-right: 5px;
+        }
+
+        .hm-item {
+            font-family: 'Rajdhani', sans-serif;
+            font-size: 9px;
+            font-weight: 700;
+            color: var(--text-dim);
+            text-align: center;
+            line-height: 1.4;
+            letter-spacing: 0.5px;
+        }
+
+        .hm-val {
+            display: block;
+            font-size: 14px;
+            color: var(--text-main);
+            transition: font-size 0.3s ease;
+        }
+
+        .hm-val.orange {
+            color: var(--orange);
+            text-shadow: 0 0 8px var(--orange);
+        }
+
+        /* ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+           IMPROVEMENT 3: TELEMETRY VALUE FLASH
+           When a value updates, it briefly flashes
+           bright cyan then fades back. Pure CSS class.
+        ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━ */
+        @keyframes valFlash {
+            0% {
+                color: #fff;
+                text-shadow: 0 0 12px var(--cyan), 0 0 20px var(--cyan);
+            }
+
+            60% {
+                color: var(--cyan);
+                text-shadow: 0 0 8px var(--cyan);
+            }
+
+            100% {
+                color: var(--cyan);
+                text-shadow: none;
+            }
+        }
+
+        .val-flash {
+            animation: valFlash 0.7s ease-out forwards;
+        }
+
+        .header-pulse {
+            width: 8px;
+            height: 8px;
+            border-radius: 50%;
+            background: var(--green);
+            box-shadow: 0 0 8px var(--green);
+            animation: pulseGlow 1.4s ease-in-out infinite;
+        }
+
+        @keyframes pulseGlow {
+
+            0%,
+            100% {
+                opacity: 1;
+                transform: scale(1);
+            }
+
+            50% {
+                opacity: 0.4;
+                transform: scale(0.7);
+            }
+        }
+
+        /* ── PAGE AREA ── */
+        #pages-wrap {
+            flex: 1;
+            overflow: hidden;
+            position: relative;
+        }
+
+        #pages {
+            display: flex;
+            height: 100%;
+            transition: transform 0.35s cubic-bezier(0.25, 0.8, 0.25, 1);
+            will-change: transform;
+        }
+
+        /* ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+           IMPROVEMENT 4: PAGE EDGE GLOW
+           A neon cyan glow traces the leading edge
+           of an incoming page during swipe.
+        ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━ */
+        #page-edge-glow {
+            position: absolute;
+            top: 0;
+            bottom: 0;
+            width: 3px;
+            background: linear-gradient(to bottom,
+                    transparent 0%, var(--cyan) 30%,
+                    var(--magenta) 70%, transparent 100%);
+            box-shadow: 0 0 18px 4px var(--cyan);
+            opacity: 0;
+            z-index: 99;
+            pointer-events: none;
+            transition: opacity 0.2s;
+        }
+
+        #page-edge-glow.visible {
+            opacity: 1;
+        }
+
+        .page {
+            flex-shrink: 0;
+            width: 100%;
+            height: 100%;
+            overflow-y: auto;
+            overflow-x: hidden;
+            padding: 12px 12px 8px;
+            display: flex;
+            flex-direction: column;
+            gap: 10px;
+            -webkit-overflow-scrolling: touch;
+        }
+
+        /* ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+           IMPROVEMENT 5: WIDGET STAGGER ENTRANCE
+           Widgets fade+slide up sequentially when
+           their parent page becomes active.
+        ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━ */
+        @keyframes widgetEnter {
+            from {
+                opacity: 0;
+                transform: translateY(18px);
+            }
+
+            to {
+                opacity: 1;
+                transform: translateY(0);
+            }
+        }
+
+        .page.page-active .widget,
+        .page.page-active .stat-grid,
+        .page.page-active #brain-canvas-wrap {
+            animation: widgetEnter 0.4s ease-out forwards;
+            opacity: 0;
+        }
+
+        .page.page-active .widget:nth-child(1),
+        .page.page-active #brain-canvas-wrap {
+            animation-delay: 0.05s;
+        }
+
+        .page.page-active .widget:nth-child(2),
+        .page.page-active .stat-grid:nth-child(2) {
+            animation-delay: 0.13s;
+        }
+
+        .page.page-active .widget:nth-child(3),
+        .page.page-active .stat-grid:nth-child(3) {
+            animation-delay: 0.21s;
+        }
+
+        .page.page-active .widget:nth-child(4),
+        .page.page-active .stat-grid:nth-child(4) {
+            animation-delay: 0.29s;
+        }
+
+        .page.page-active .stat-grid {
+            animation-delay: 0.17s;
+        }
+
+        /* ── BOTTOM NAV ── */
+        #bottom-nav {
+            flex-shrink: 0;
+            display: flex;
+            justify-content: space-around;
+            align-items: stretch;
+            border-top: 1px solid var(--panel-border);
+            background: rgba(4, 6, 9, 0.97);
+            backdrop-filter: blur(12px);
+            padding-bottom: env(safe-area-inset-bottom, 15px);
+            min-height: 65px;
+            position: relative;
+        }
+
+        /* ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+           IMPROVEMENT 6: SLIDING NAV INDICATOR
+           A glowing bar slides between nav items
+           instead of just changing text color.
+        ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━ */
+        #nav-indicator {
+            position: absolute;
+            top: 0;
+            height: 2px;
+            background: linear-gradient(90deg, var(--magenta), var(--cyan));
+            box-shadow: 0 0 10px var(--cyan), 0 0 20px rgba(0, 229, 255, 0.4);
+            transition: left 0.35s cubic-bezier(0.25, 0.8, 0.25, 1), width 0.35s cubic-bezier(0.25, 0.8, 0.25, 1);
+            border-radius: 0 0 2px 2px;
+        }
+
+        .bnav-item {
+            flex: 1;
+            display: flex;
+            flex-direction: column;
+            align-items: center;
+            justify-content: center;
+            padding: 12px 4px;
+            font-family: 'Rajdhani', sans-serif;
+            font-size: 11px;
+            font-weight: 700;
+            letter-spacing: 0.5px;
+            color: var(--text-dim);
+            text-transform: uppercase;
+            cursor: pointer;
+            transition: color 0.2s;
+            gap: 6px;
+            position: relative;
+        }
+
+        .bnav-item.active {
+            color: var(--cyan);
+        }
+
+        .bnav-dot {
+            width: 8px;
+            height: 8px;
+            border-radius: 50%;
+            background: var(--text-dim);
+            margin: 0 auto;
+            transition: background 0.2s, box-shadow 0.2s, transform 0.2s;
+        }
+
+        .bnav-item.active .bnav-dot {
+            background: var(--magenta);
+            box-shadow: 0 0 8px var(--magenta);
+        }
+
+        /* ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+           IMPROVEMENT 7: NAV TAP BOUNCE
+           Nav items bounce on tap for haptic-like
+           physical feedback.
+        ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━ */
+        @keyframes navBounce {
+            0% {
+                transform: scale(1);
+            }
+
+            40% {
+                transform: scale(0.82);
+            }
+
+            70% {
+                transform: scale(1.1);
+            }
+
+            100% {
+                transform: scale(1);
+            }
+        }
+
+        .bnav-item.bounce {
+            animation: navBounce 0.3s ease;
+        }
+
+        /* ── WIDGETS ── */
+        .widget {
+            background: var(--panel-bg);
+            backdrop-filter: blur(14px);
+            border: 1px solid var(--panel-border);
+            border-radius: 8px;
+            padding: 14px;
+            box-shadow: 0 0 24px rgba(0, 0, 0, 0.7), inset 0 1px 0 rgba(0, 229, 255, 0.06);
+        }
+
+        .widget-title {
+            font-family: 'Rajdhani', sans-serif;
+            font-size: 11px;
+            font-weight: 700;
+            color: var(--text-dim);
+            text-transform: uppercase;
+            letter-spacing: 1.5px;
+            margin-bottom: 12px;
+            display: flex;
+            align-items: center;
+            gap: 8px;
+        }
+
+        .widget-title::before {
+            content: '';
+            display: block;
+            width: 3px;
+            height: 12px;
+            background: var(--cyan);
+            border-radius: 2px;
+            box-shadow: 0 0 6px var(--cyan);
+        }
+
+        /* ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+           IMPROVEMENT 8: STAT CARD TAP RIPPLE
+           A radial ripple expands from the tap point
+           inside stat cards on press.
+        ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━ */
+        .stat-grid {
+            display: grid;
+            grid-template-columns: repeat(3, 1fr);
+            gap: 12px;
+        }
+
+        .stat-card {
+            background: rgba(0, 229, 255, 0.04);
+            border: 1px solid rgba(0, 229, 255, 0.12);
+            border-radius: 6px;
+            padding: 10px 12px;
+            position: relative;
+            overflow: hidden;
+            cursor: default;
+            transition: border-color 0.2s;
+        }
+
+        .stat-card:active {
+            border-color: rgba(0, 229, 255, 0.4);
+        }
+
+        .stat-ripple {
+            position: absolute;
+            border-radius: 50%;
+            background: radial-gradient(circle, rgba(0, 229, 255, 0.3) 0%, transparent 70%);
+            transform: scale(0);
+            animation: rippleOut 0.5s ease-out forwards;
+            pointer-events: none;
+        }
+
+        @keyframes rippleOut {
+            to {
+                transform: scale(4);
+                opacity: 0;
+            }
+        }
+
+        .stat-card-label {
+            font-size: 9px;
+            color: var(--text-dim);
+            text-transform: uppercase;
+            letter-spacing: 1px;
+        }
+
+        .stat-card-val {
+            font-family: 'Rajdhani', sans-serif;
+            font-size: 22px;
+            font-weight: 700;
+            color: var(--cyan);
+            text-shadow: 0 0 10px rgba(0, 229, 255, 0.5);
+            line-height: 1.2;
+        }
+
+        .stat-card-val.orange {
+            color: var(--orange);
+            text-shadow: 0 0 10px rgba(255, 183, 0, 0.5);
+        }
+
+        .stat-card-val.green {
+            color: var(--green);
+            text-shadow: 0 0 10px rgba(57, 255, 20, 0.5);
+        }
+
+        /* ── TELEMETRY ── */
+        .tel-row {
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+            padding: 7px 0;
+            border-bottom: 1px solid rgba(255, 255, 255, 0.04);
+            font-size: 10px;
+        }
+
+        .tel-row:last-child {
+            border-bottom: none;
+        }
+
+        .tel-key {
+            color: var(--text-dim);
+        }
+
+        .tel-val {
+            color: var(--text-main);
+        }
+
+        .tel-val.cyan {
+            color: var(--cyan);
+        }
+
+        .fire-rate-badge {
+            display: inline-flex;
+            align-items: center;
+            gap: 6px;
+            background: rgba(0, 229, 255, 0.08);
+            border: 1px solid rgba(0, 229, 255, 0.25);
+            border-radius: 20px;
+            padding: 4px 12px;
+            font-size: 11px;
+            color: var(--cyan);
+            margin-top: 10px;
+            max-width: 100%;
+            overflow: hidden;
+            text-overflow: ellipsis;
+            white-space: nowrap;
+        }
+
+        /* ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+           IMPROVEMENT 9: KNOWLEDGE BAR ANIMATION
+           Bars animate from 0 → target width when
+           the page enters. CSS only via keyframe.
+        ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━ */
+        .k-table {
+            width: 100%;
+        }
+
+        .k-row {
+            display: flex;
+            align-items: center;
+            padding: 7px 0;
+            border-bottom: 1px solid rgba(255, 255, 255, 0.04);
+            font-size: 10px;
+            gap: 6px;
+        }
+
+        .k-row:last-child {
+            border-bottom: none;
+        }
+
+        .k-label {
+            flex: 1.4;
+            color: var(--text-main);
+        }
+
+        .k-range {
+            flex: 0.8;
+            color: var(--text-dim);
+            text-align: right;
+        }
+
+        .k-num {
+            flex: 1.2;
+            color: var(--cyan);
+            text-align: right;
+            font-family: 'Share Tech Mono', monospace;
+        }
+
+        .k-bar-wrap {
+            flex: 1.4;
+        }
+
+        .k-bar-bg {
+            height: 3px;
+            background: rgba(0, 229, 255, 0.1);
+            border-radius: 2px;
+            overflow: hidden;
+        }
+
+        .k-bar-fill {
+            height: 100%;
+            border-radius: 2px;
+            background: linear-gradient(90deg, var(--cyan), var(--magenta));
+            box-shadow: 0 0 6px rgba(0, 229, 255, 0.6);
+            transform-origin: left;
+            transform: scaleX(0);
+            transition: transform 0.8s cubic-bezier(0.25, 0.8, 0.25, 1);
+        }
+
+        /* trigger via JS class */
+        .k-bar-fill.bar-animate {
+            transform: scaleX(1);
+        }
+
+        /* ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+           IMPROVEMENT 10: IMPROVED NODE SEARCH UI
+           Glass panel with icon, result count badge,
+           and animated clear ✕ button.
+        ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━ */
+        #search-panel {
+            position: absolute;
+            bottom: 15px;
+            left: 12px;
+            z-index: 20;
+            display: flex;
+            align-items: center;
+            gap: 0;
+            background: rgba(4, 8, 14, 0.9);
+            border: 1px solid var(--panel-border);
+            border-radius: 6px;
+            backdrop-filter: blur(12px);
+            overflow: hidden;
+            box-shadow: 0 0 14px rgba(0, 229, 255, 0.15);
+            width: 195px;
+            transition: border-color 0.2s;
+        }
+
+        #search-panel:focus-within {
+            border-color: rgba(0, 229, 255, 0.6);
+            box-shadow: 0 0 18px rgba(0, 229, 255, 0.3);
+        }
+
+        #search-icon {
+            padding: 0 8px;
+            color: var(--text-dim);
+            font-size: 12px;
+            pointer-events: none;
+            flex-shrink: 0;
+        }
+
+        #node-search {
+            flex: 1;
+            background: transparent;
+            border: none;
+            outline: none;
+            color: #fff;
+            font-family: 'Share Tech Mono', monospace;
+            font-size: 11px;
+            padding: 9px 0;
+        }
+
+        #node-search::placeholder {
+            color: var(--text-dim);
+        }
+
+        #search-clear {
+            padding: 0 8px;
+            color: var(--text-dim);
+            font-size: 14px;
+            cursor: pointer;
+            display: none;
+            flex-shrink: 0;
+            transition: color 0.2s;
+        }
+
+        #search-clear:hover {
+            color: var(--cyan);
+        }
+
+        #search-count {
+            position: absolute;
+            top: -8px;
+            right: -8px;
+            background: var(--magenta);
+            color: #000;
+            font-family: 'Rajdhani', sans-serif;
+            font-size: 9px;
+            font-weight: 700;
+            border-radius: 8px;
+            padding: 1px 5px;
+            display: none;
+            box-shadow: 0 0 6px var(--magenta);
+        }
+
+        /* ── BRAIN CANVAS WRAP ── */
+        #brain-canvas-wrap {
+            flex: 1;
+            min-height: 350px;
+            position: relative;
+            border-radius: 8px;
+            overflow: hidden;
+            border: 1px solid var(--panel-border);
+        }
+
+        #brain-canvas-wrap svg {
+            width: 100%;
+            height: 100%;
+        }
+
+        .brain-label {
+            position: absolute;
+            top: 15px;
+            left: 50%;
+            transform: translateX(-50%);
+            font-family: 'Rajdhani', sans-serif;
+            font-size: 12px;
+            font-weight: bold;
+            color: rgba(0, 229, 255, 0.8);
+            letter-spacing: 2px;
+            text-transform: uppercase;
+            pointer-events: none;
+        }
+
+        /* ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+           IMPROVEMENT 11: NODE DETAIL DRAWER
+           Tapping a node slides up a bottom drawer
+           with full node details instead of cramming
+           info into small telemetry rows.
+        ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━ */
+        #node-drawer {
+            position: fixed;
+            bottom: 0;
+            left: 0;
+            right: 0;
+            z-index: 50;
+            background: rgba(5, 8, 14, 0.97);
+            border-top: 1px solid var(--panel-border);
+            border-radius: 14px 14px 0 0;
+            padding: 0 16px 24px;
+            box-shadow: 0 -10px 40px rgba(0, 0, 0, 0.8), 0 -1px 0 rgba(0, 229, 255, 0.1);
+            backdrop-filter: blur(20px);
+            transform: translateY(100%);
+            transition: transform 0.38s cubic-bezier(0.25, 0.8, 0.25, 1);
+            max-height: 55vh;
+            overflow-y: auto;
+        }
+
+        #node-drawer.open {
+            transform: translateY(0);
+        }
+
+        #node-drawer-handle {
+            text-align: center;
+            padding: 10px 0 4px;
+            cursor: pointer;
+        }
+
+        #node-drawer-handle::before {
+            content: '';
+            display: inline-block;
+            width: 36px;
+            height: 4px;
+            background: rgba(0, 229, 255, 0.25);
+            border-radius: 2px;
+        }
+
+        .drawer-title {
+            font-family: 'Rajdhani', sans-serif;
+            font-size: 18px;
+            font-weight: 700;
+            color: white;
+            letter-spacing: 1px;
+            margin: 6px 0 4px;
+        }
+
+        .drawer-type-badge {
+            display: inline-block;
+            font-family: 'Rajdhani', sans-serif;
+            font-size: 10px;
+            font-weight: 700;
+            padding: 2px 8px;
+            border-radius: 3px;
+            border: 1px solid var(--cyan);
+            color: var(--cyan);
+            background: rgba(0, 229, 255, 0.07);
+            text-transform: uppercase;
+            letter-spacing: 1px;
+            margin-bottom: 10px;
+        }
+
+        .drawer-meta {
+            font-size: 11px;
+            color: var(--text-dim);
+            line-height: 1.8;
+            margin-bottom: 12px;
+        }
+
+        .drawer-path {
+            font-size: 10px;
+            color: rgba(0, 229, 255, 0.6);
+            background: rgba(0, 229, 255, 0.05);
+            border: 1px solid rgba(0, 229, 255, 0.12);
+            border-radius: 4px;
+            padding: 6px 10px;
+            margin-bottom: 12px;
+        }
+
+        .drawer-actions {
+            display: flex;
+            gap: 8px;
+        }
+
+        .drawer-btn {
+            flex: 1;
+            padding: 10px;
+            font-family: 'Rajdhani', sans-serif;
+            font-size: 12px;
+            font-weight: 700;
+            letter-spacing: 1px;
+            text-transform: uppercase;
+            border-radius: 5px;
+            cursor: pointer;
+        }
+
+        .drawer-btn-del {
+            background: rgba(248, 81, 73, 0.12);
+            border: 1px solid rgba(248, 81, 73, 0.4);
+            color: #f85149;
+        }
+
+        .drawer-btn-close {
+            background: rgba(0, 229, 255, 0.08);
+            border: 1px solid rgba(0, 229, 255, 0.3);
+            color: var(--cyan);
+        }
+
+        /* Drawer scrim */
+        #drawer-scrim {
+            position: fixed;
+            inset: 0;
+            z-index: 49;
+            background: rgba(0, 0, 0, 0.4);
+            opacity: 0;
+            pointer-events: none;
+            transition: opacity 0.3s ease;
+        }
+
+        #drawer-scrim.visible {
+            opacity: 1;
+            pointer-events: auto;
+        }
+
+        /* ── CONSOLE ── */
+        .console-output {
+            font-size: 10px;
+            line-height: 2;
+            color: #17a66f;
+            overflow: hidden;
+        }
+
+        /* ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+           IMPROVEMENT 12: CONSOLE AUTO-SCROLL
+           Handled in JS — new lines slide in from
+           below and console scrolls to bottom.
+        ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━ */
+        .console-line {
+            animation: consoleFadeIn 0.3s ease-out;
+        }
+
+        @keyframes consoleFadeIn {
+            from {
+                opacity: 0;
+                transform: translateY(4px);
+            }
+
+            to {
+                opacity: 1;
+                transform: translateY(0);
+            }
+        }
+
+        .console-output .dim {
+            color: var(--text-dim);
+        }
+
+        .console-cursor {
+            display: inline-block;
+            width: 7px;
+            height: 11px;
+            background: var(--green);
+            vertical-align: middle;
+            animation: blink 1s step-end infinite;
+            margin-left: 2px;
+        }
+
+        @keyframes blink {
+            50% {
+                opacity: 0;
+            }
+        }
+
+        /* ── MOOD ── */
+        .mood-legend {
+            display: flex;
+            gap: 14px;
+            margin-top: 8px;
+        }
+
+        .legend-item {
+            display: flex;
+            align-items: center;
+            gap: 5px;
+            font-size: 9px;
+            color: var(--text-dim);
+        }
+
+        .legend-dot {
+            width: 8px;
+            height: 2px;
+            border-radius: 1px;
+        }
+
+        .mood-big-chart {
+            height: 140px;
+            position: relative;
+            border-bottom: 1px solid var(--panel-border);
+            border-left: 1px solid var(--panel-border);
+            margin-left: 26px;
+            margin-top: 8px;
+        }
+
+        .mood-big-labels {
+            position: absolute;
+            left: -26px;
+            top: 0;
+            bottom: 0;
+            display: flex;
+            flex-direction: column;
+            justify-content: space-between;
+            font-size: 8px;
+            color: var(--text-dim);
+        }
+
+        .mood-tag-row {
+            display: flex;
+            gap: 8px;
+            flex-wrap: wrap;
+            margin-top: 10px;
+        }
+
+        .mood-tag {
+            font-family: 'Rajdhani', sans-serif;
+            font-size: 11px;
+            font-weight: 700;
+            padding: 4px 10px;
+            border-radius: 20px;
+            text-transform: uppercase;
+            letter-spacing: 1px;
+        }
+
+        .mood-tag.cyan {
+            border: 1px solid var(--cyan);
+            color: var(--cyan);
+            background: rgba(0, 229, 255, 0.07);
+        }
+
+        .mood-tag.magenta {
+            border: 1px solid var(--magenta);
+            color: var(--magenta);
+            background: rgba(255, 0, 255, 0.07);
+        }
+
+        .mood-tag.orange {
+            border: 1px solid var(--orange);
+            color: var(--orange);
+            background: rgba(255, 183, 0, 0.07);
+        }
+
+        /* ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+           IMPROVEMENT 13: ANIMATED MOOD PATHS
+           SVG paths draw themselves on page enter
+           using stroke-dashoffset animation.
+        ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━ */
+        .mood-path-animated {
+            stroke-dasharray: 300;
+            stroke-dashoffset: 300;
+            transition: stroke-dashoffset 1.4s cubic-bezier(0.25, 0.8, 0.25, 1);
+        }
+
+        .mood-path-animated.drawn {
+            stroke-dashoffset: 0;
+        }
+
+        /* ── MEMORY CARDS ── */
+        .memory-card {
+            background: rgba(255, 0, 255, 0.04);
+            border: 1px solid rgba(255, 0, 255, 0.18);
+            border-radius: 6px;
+            padding: 12px;
+            transition: border-color 0.2s, background 0.2s;
+        }
+
+        .memory-card:active {
+            border-color: rgba(255, 0, 255, 0.45);
+            background: rgba(255, 0, 255, 0.08);
+        }
+
+        .memory-card-ts {
+            font-size: 9px;
+            color: var(--magenta);
+            opacity: 0.7;
+            margin-bottom: 4px;
+            letter-spacing: 1px;
+        }
+
+        .memory-card-body {
+            font-size: 10px;
+            color: var(--text-main);
+            line-height: 1.7;
+        }
+
+        /* ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+           IMPROVEMENT 14: EMPTY STATE
+           Polished empty state shown when lists have
+           no data — pulsing icon + message.
+        ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━ */
+        .empty-state {
+            display: flex;
+            flex-direction: column;
+            align-items: center;
+            justify-content: center;
+            padding: 32px 16px;
+            gap: 12px;
+            color: var(--text-dim);
+            text-align: center;
+        }
+
+        .empty-icon {
+            font-size: 28px;
+            opacity: 0.4;
+            animation: pulseGlow 2s ease-in-out infinite;
+        }
+
+        .empty-msg {
+            font-family: 'Rajdhani', sans-serif;
+            font-size: 13px;
+            font-weight: 700;
+            text-transform: uppercase;
+            letter-spacing: 2px;
+            color: var(--text-dim);
+        }
+
+        .empty-sub {
+            font-size: 10px;
+            color: rgba(107, 130, 153, 0.6);
+        }
+
+        /* ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+           IMPROVEMENT 15: PAGE POSITION DOTS
+           A row of indicator dots between the
+           progress bar and content, showing position.
+        ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━ */
+        #page-dots {
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            gap: 6px;
+            padding: 5px 0 2px;
+            flex-shrink: 0;
+        }
+
+        .page-dot {
+            width: 5px;
+            height: 5px;
+            border-radius: 50%;
+            background: rgba(0, 229, 255, 0.2);
+            transition: background 0.3s, transform 0.3s, width 0.3s;
+        }
+
+        .page-dot.active {
+            background: var(--cyan);
+            box-shadow: 0 0 6px var(--cyan);
+            width: 14px;
+            border-radius: 3px;
+        }
+
+        /* ── MISC BUTTONS ── */
+        .pg-btn {
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            gap: 8px;
+            width: 100%;
+            padding: 12px;
+            background: linear-gradient(135deg, rgba(0, 229, 255, 0.15), rgba(255, 0, 255, 0.1));
+            border: 1px solid var(--cyan);
+            border-radius: 6px;
+            color: var(--cyan);
+            font-family: 'Rajdhani', sans-serif;
+            font-size: 13px;
+            font-weight: 700;
+            letter-spacing: 2px;
+            text-transform: uppercase;
+            cursor: pointer;
+        }
+
+        /* ── SWIPE HINT ── */
+        .swipe-hint {
+            position: fixed;
+            bottom: 68px;
+            left: 50%;
+            transform: translateX(-50%);
+            z-index: 20;
+            pointer-events: none;
+            font-family: 'Rajdhani', sans-serif;
+            font-size: 10px;
+            color: rgba(0, 229, 255, 0.35);
+            letter-spacing: 2px;
+            animation: fadeHint 2.5s ease-out 1.2s forwards;
+            display: flex;
+            align-items: center;
+            gap: 6px;
+        }
+
+        @keyframes fadeHint {
+            from {
+                opacity: 1;
+            }
+
+            to {
+                opacity: 0;
+            }
+        }
+    </style>
+</head>
+
+<body>
+    <canvas id="c-bg"></canvas>
+    <canvas id="c-main"></canvas>
+    <canvas id="c-fx"></canvas>
+    <div id="scanlines"></div>
+
+    <!-- Node detail drawer (improvement 11) -->
+    <div id="drawer-scrim" onclick="closeDrawer()"></div>
+    <div id="node-drawer">
+        <div id="node-drawer-handle" onclick="closeDrawer()"></div>
+        <div class="drawer-title" id="drawer-title">—</div>
+        <div class="drawer-type-badge" id="drawer-type">UNKNOWN</div>
+        <div class="drawer-path" id="drawer-path">◉ ACTIVE MESH // LIVE</div>
+        <div class="drawer-meta" id="drawer-meta">No metadata available.</div>
+        <div class="drawer-actions">
+            <button class="drawer-btn drawer-btn-del" onclick="deleteSelectedNode()">🗑 DELETE NODE</button>
+            <button class="drawer-btn drawer-btn-close" onclick="closeDrawer()">✕ CLOSE</button>
+        </div>
+    </div>
+
+    <div id="app">
+        <header id="main-header">
+            <div class="brand">TARS // <span>NEXUS</span></div>
+            <div class="header-metrics">
+                <div class="hm-item">CPU<span class="hm-val" id="hm-cpu">{{ cpu | round | int }}%</span></div>
+                <div class="hm-item">RAM<span class="hm-val" id="hm-ram">{{ ram | round | int }}%</span></div>
+                <div class="hm-item">STATE<span class="hm-val {% if stress > 30 %}orange{% endif %}" id="hm-state">{{
+                        state[:7].upper() }}</span></div>
+                <div class="header-pulse"></div>
+            </div>
+        </header>
+
+        <!-- Improvement 2: swipe progress bar -->
+        <div id="swipe-progress">
+            <div id="swipe-progress-fill"></div>
+        </div>
+
+        <!-- Improvement 15: page position dots -->
+        <div id="page-dots">
+            <div class="page-dot active" data-dot="0"></div>
+            <div class="page-dot" data-dot="1"></div>
+            <div class="page-dot" data-dot="2"></div>
+            <div class="page-dot" data-dot="3"></div>
+            <div class="page-dot" data-dot="4"></div>
+        </div>
+
+        <div id="pages-wrap">
+            <!-- Improvement 4: edge glow element -->
+            <div id="page-edge-glow"></div>
+
+            <div id="pages">
+
+                <!-- PAGE 0: BRAIN EXPLORER -->
+                <div class="page page-active" id="page-0">
+                    <div id="brain-canvas-wrap">
+                        <!-- Improvement 10: improved search panel -->
+                        <div id="search-panel" style="position:absolute;bottom:15px;left:12px;">
+                            <span id="search-icon">⌕</span>
+                            <input type="text" id="node-search" placeholder="Search nodes..."
+                                oninput="searchNodes(this.value)">
+                            <span id="search-clear" onclick="clearSearch()">✕</span>
+                            <span id="search-count"></span>
+                        </div>
+
+                        <div
+                            style="position:absolute;right:2px;top:10px;bottom:30px;width:24px;display:flex;flex-direction:column;align-items:center;gap:4px;z-index:10;">
+                            <span id="node-count-label"
+                                style="font-size:7px;color:var(--cyan);font-family:'Share Tech Mono',monospace;writing-mode:vertical-rl;transform:rotate(180deg);white-space:nowrap;margin-bottom:2px;">0
+                                NODES</span>
+                            <input type="range" id="node-slider" min="10" max="100" value="100" orient="vertical"
+                                style="writing-mode:bt-lr;-webkit-appearance:slider-vertical;appearance:slider-vertical;width:18px;flex:1;accent-color:var(--cyan);cursor:pointer;"
+                                oninput="updateCogMap(this.value)">
+                            <span
+                                style="font-size:6px;color:var(--text-dim);font-family:'Share Tech Mono',monospace;">ALL</span>
+                        </div>
+
+                        <svg id="cog-map-svg"></svg>
+                        <div class="brain-label">NEURAL MESH // LIVE</div>
+                    </div>
+
+                    <div class="widget">
+                        <div class="widget-title">NEURAL TELEMETRY</div>
+                        <div class="tel-row">
+                            <span class="tel-key">TARGET</span>
+                            <span class="tel-val">
+                                <span id="node-target">STANDBY</span>
+                                <button id="node-del-btn"
+                                    style="display:none;background:rgba(248,81,73,0.15);border:1px solid #f85149;color:#f85149;border-radius:3px;font-size:8px;padding:2px 4px;cursor:pointer;margin-left:6px;"
+                                    onclick="deleteSelectedNode()">🗑️ DEL</button>
+                            </span>
+                        </div>
+                        <div class="tel-row">
+                            <span class="tel-key">METADATA</span>
+                            <span id="node-metadata" class="tel-val cyan">---</span>
+                        </div>
+                        <div class="tel-row">
+                            <span class="tel-key">TYPE</span>
+                            <span id="node-type" class="tel-val cyan">---</span>
+                        </div>
+                        <div class="fire-rate-badge" id="node-path">◉ &nbsp; ACTIVE MESH &nbsp; // &nbsp; LIVE UPDATE
+                        </div>
+                    </div>
+
+                    <div class="stat-grid"
+                        style="display: grid; grid-template-columns: repeat(2, 1fr); gap: 10px; margin-top: 15px;">
+                        <div class="stat-card" onclick="addRipple(event, this)">
+                            <div class="stat-card-label">TOTAL FACTS</div>
+                            <div class="stat-card-val" id="hm-facts">{{ total_facts }}</div>
+                        </div>
+                        <div class="stat-card" onclick="addRipple(event, this)">
+                            <div class="stat-card-label">24H ACTIVITY</div>
+                            <div class="stat-card-val" id="hm-activity">{{ activity_24h }}</div>
+                        </div>
+                        <div class="stat-card" onclick="addRipple(event, this)">
+                            <div class="stat-card-label" id="hm-stress-label">{{ state }}</div>
+                            <div class="stat-card-val {% if stress > 30 %}orange{% else %}green{% endif %}"
+                                id="hm-stress">{{ stress }}%</div>
+                        </div>
+                        <div class="stat-card" style="padding: 8px;">
+                            <div class="stat-card-label" style="margin-bottom:4px; opacity: 0.6; font-size: 9px;">
+                                CONTROLS</div>
+                            <div
+                                style="display:flex;flex-direction:row;gap:6px;justify-content:center;align-items:stretch;height:calc(100% - 15px);">
+                                <button onclick="sysAction('reboot')"
+                                    style="flex:1;padding:6px;background:rgba(0,229,255,0.05);border:1px solid rgba(0,229,255,0.2);color:var(--cyan);font-family:'Rajdhani',sans-serif;font-size:11px;font-weight:700;letter-spacing:1px;border-radius:4px;cursor:pointer;">REBOOT</button>
+                                <button onclick="sysAction('shutdown')"
+                                    style="flex:1;padding:6px;background:rgba(255,0,255,0.05);border:1px solid rgba(255,0,255,0.2);color:var(--magenta);font-family:'Rajdhani',sans-serif;font-size:11px;font-weight:700;letter-spacing:1px;border-radius:4px;cursor:pointer;">PWR_OFF</button>
+                            </div>
+                        </div>
+                    </div>
+                </div>
+
+                <!-- PAGE 1: FACTS DASHBOARD -->
+                <div class="page" id="page-1" style="overflow-y:auto; padding:0 10px 80px;">
+                    <div
+                        style="font-family:'Space Grotesk', sans-serif;font-size:16px;font-weight:700;letter-spacing:1px;color:var(--text);margin-bottom:15px;margin-top:20px;text-transform:uppercase;">
+                        <span
+                            style="display:inline-block;width:24px;height:24px;line-height:24px;text-align:center;background:rgba(0,172,193,0.2);border:1px solid rgba(0,172,193,0.5);border-radius:6px;color:#00e5ff;margin-right:8px;font-size:12px;">◈</span>SEMANTIC
+                        KNOWLEDGE GRAPH
+                    </div>
+
+                    <div style="display:grid; grid-template-columns: 1fr; gap:20px;">
+                        <!-- Fact Table Widget -->
+                        <div class="widget" style="padding:15px;">
+                            <div class="widget-title"><span style="margin-right:8px;">📋</span>FACT TABLE</div>
+                            <div style="overflow-x:auto;">
+                                <table id="fact-table"
+                                    style="width:100%; border-collapse:collapse; font-family:monospace; font-size:10px; color:var(--text-dim);">
+                                    <thead>
+                                        <tr style="border-bottom:1px solid rgba(0,248,255,0.15); text-align:left;">
+                                            <th style="padding:8px; color:var(--cyan);">ID</th>
+                                            <th style="padding:8px; color:var(--cyan);">USER_ID</th>
+                                            <th style="padding:8px; color:var(--cyan);">SUBJECT</th>
+                                            <th style="padding:8px; color:var(--cyan);">PREDICATE</th>
+                                            <th style="padding:8px; color:var(--cyan);">OBJECT</th>
+                                        </tr>
+                                    </thead>
+                                    <tbody id="fact-table-body">
+                                        <!-- Populated via JS -->
+                                    </tbody>
+                                </table>
+                            </div>
+                            <div style="margin-top:15px; display:flex; justify-content:flex-start;">
+                                <button onclick="saveFactChanges()" id="save-facts-btn"
+                                    style="background:rgba(142,36,170,0.15); border:1px solid rgba(142,36,170,0.4); color:#e1bee7; padding:8px 16px; border-radius:6px; font-family:'Space Grotesk', sans-serif; font-size:11px; font-weight:700; letter-spacing:1px; cursor:pointer; display:flex; align-items:center; gap:8px; transition:all 0.3s ease;">
+                                    <span>💾</span>SAVE CHANGES
+                                </button>
+                            </div>
+                        </div>
+
+                        <!-- Interactive Graph Widget -->
+                        <div class="widget" style="padding:15px;">
+                            <div class="widget-title"><span style="margin-right:8px;">🔗</span>INTERACTIVE GRAPH</div>
+                            <div id="facts-graph-container"
+                                style="width:100%; height:300px; background:rgba(0,0,0,0.3); border-radius:8px; border:1px solid rgba(0,248,255,0.05); overflow:hidden;">
+                                <svg id="facts-graph-svg" width="100%" height="100%"></svg>
+                            </div>
+                        </div>
+                    </div>
+                </div>
+
+                <!-- PAGE 2: CLI CONSOLE -->
+                <div class="page" id="page-2"
+                    style="overflow-y:hidden; padding:0 10px 80px; display:flex; flex-direction:column; height:100%;">
+                    <div
+                        style="font-family:'Space Grotesk', sans-serif;font-size:16px;font-weight:700;letter-spacing:1px;color:var(--text);margin-bottom:15px;margin-top:20px;text-transform:uppercase; flex-shrink:0;">
+                        <span
+                            style="display:inline-block;width:24px;height:24px;line-height:24px;text-align:center;background:rgba(255,152,0,0.2);border:1px solid rgba(255,152,0,0.5);border-radius:6px;color:#ff9800;margin-right:8px;font-size:12px;">Terminal</span>LIVE
+                        SYSTEM CLI
+                    </div>
+
+                    <div class="widget"
+                        style="padding:0; flex-grow:1; display:flex; flex-direction:column; overflow:hidden; border:1px solid rgba(255,152,0,0.15);">
+                        <div
+                            style="background:rgba(0,0,0,0.6); padding:8px 15px; border-bottom:1px solid rgba(255,152,0,0.15); display:flex; justify-content:space-between; align-items:center;">
+                            <span
+                                style="font-family:monospace; font-size:10px; color:rgba(255,152,0,0.8);">user@tars-nexus:~$
+                                tail -f bot.log</span>
+                            <div style="display:flex; gap:6px;">
+                                <div style="width:10px; height:10px; border-radius:50%; background:#ff5252;"></div>
+                                <div style="width:10px; height:10px; border-radius:50%; background:#ffeb3b;"></div>
+                                <div style="width:10px; height:10px; border-radius:50%; background:#4caf50;"></div>
+                            </div>
+                        </div>
+                        <div id="cli-output-container"
+                            style="flex-grow:1; background:rgba(10,12,18,0.95); padding:15px; overflow-y:auto; font-family:monospace; font-size:11px; color:#d4d4d4; line-height:1.4; white-space:pre-wrap; word-wrap:break-word;">
+                            <div id="cli-output-content">Initializing secure connection to TARS core...\n</div>
+                        </div>
+                    </div>
+                </div>
+
+                <!-- PAGE 3: MOOD -->
+                <div class="page" id="page-3" style="overflow-y:auto; padding:0 10px 80px;">
+                    <div
+                        style="font-family:'Space Grotesk',sans-serif;font-size:16px;font-weight:700;letter-spacing:1px;color:var(--text);margin-bottom:12px;margin-top:20px;text-transform:uppercase;">
+                        EMOTIONAL STABILITY
+                    </div>
+
+                    <!-- Mood Counts Bar Chart -->
+                    <div
+                        style="background:rgba(10,12,18,0.85);border:1px solid rgba(0,248,255,0.12);border-radius:10px;padding:14px;margin-bottom:14px;">
+                        <div
+                            style="font-family:'Space Grotesk',sans-serif;font-size:12px;color:var(--cyan);text-transform:uppercase;letter-spacing:1px;margin-bottom:10px;">
+                            MOOD COUNTS</div>
+                        <svg id="mood-bar-svg" width="100%" height="180"></svg>
+                    </div>
+
+                    <!-- Mood Timeline Scatter -->
+                    <div
+                        style="background:rgba(10,12,18,0.85);border:1px solid rgba(0,248,255,0.12);border-radius:10px;padding:14px;margin-bottom:14px;">
+                        <div
+                            style="font-family:'Space Grotesk',sans-serif;font-size:12px;color:var(--cyan);text-transform:uppercase;letter-spacing:1px;margin-bottom:10px;">
+                            MOOD TIMELINE</div>
+                        <svg id="mood-timeline-svg" width="100%" height="200"></svg>
+                    </div>
+
+                    <!-- Activity Volume -->
+                    <div
+                        style="background:rgba(10,12,18,0.85);border:1px solid rgba(0,248,255,0.12);border-radius:10px;padding:14px;">
+                        <div
+                            style="font-family:'Space Grotesk',sans-serif;font-size:12px;color:var(--cyan);text-transform:uppercase;letter-spacing:1px;margin-bottom:10px;">
+                            ACTIVITY VOLUME</div>
+                        <svg id="activity-bar-svg" width="100%" height="160"></svg>
+                    </div>
+                </div>
+
+                <!-- PAGE 4: DEBUGGER -->
+                <div class="page" id="page-4" style="overflow-y:auto; padding:0 10px 80px;">
+                    <div
+                        style="font-family:'Space Grotesk', sans-serif;font-size:16px;font-weight:700;letter-spacing:1px;color:var(--text);margin-bottom:15px;margin-top:20px;text-transform:uppercase;">
+                        <span
+                            style="display:inline-block;width:24px;height:24px;line-height:24px;text-align:center;background:rgba(183,28,28,0.2);border:1px solid rgba(183,28,28,0.5);border-radius:6px;color:#ff5252;margin-right:8px;font-size:12px;">⚙</span>LIVE
+                        PROMPT DEBUGGER
+                    </div>
+                    <div style="margin-bottom:20px;">
+                        <select id="debug-log-select" onchange="loadDebugLog(this.value)"
+                            style="width:100%; background:rgba(0,0,0,0.6); border:1px solid rgba(0,248,255,0.2); color:var(--text); padding:8px; border-radius:4px; font-family:monospace; font-size:11px; outline:none; cursor:pointer;">
+                            <option value="">Select Interaction to Debug...</option>
+                        </select>
+                    </div>
+
+                    <div id="debug-content-area" style="display:none; flex-direction:column; gap:12px;">
+                        <div
+                            style="font-family:'Space Grotesk',sans-serif;font-size:13px;color:var(--cyan);margin-top:10px;text-transform:uppercase;letter-spacing:1px;">
+                            PROMPT SYNTHESIS COMPONENTS</div>
+
+                        <div id="debug-cards-container" style="display:grid; grid-template-columns: 1fr; gap:12px;">
+                        </div>
+
+                        <div
+                            style="font-family:'Space Grotesk',sans-serif;font-size:13px;color:var(--cyan);margin-top:15px;text-transform:uppercase;letter-spacing:1px;">
+                            FINAL STRING SENT TO LLM</div>
+                        <div id="debug-raw-prompt"
+                            style="background:rgba(0,0,0,0.4);border:1px solid rgba(0,248,255,0.15);border-radius:8px;padding:12px;font-family:monospace;font-size:10px;color:var(--text-dim);white-space:pre-wrap;word-break:break-all;max-height:300px;overflow-y:auto;">
+                        </div>
+                    </div>
+                </div>
+
+            </div><!-- /pages -->
+        </div><!-- /pages-wrap -->
+
+        <nav id="bottom-nav">
+            <!-- Improvement 6: sliding indicator -->
+            <div id="nav-indicator"></div>
+            <div class="bnav-item active" onclick="navTap(0, this)">
+                <div class="bnav-dot"></div><span class="bnav-label">Brain</span>
+            </div>
+            <div class="bnav-item" onclick="navTap(1, this)">
+                <div class="bnav-dot"></div><span class="bnav-label">Facts</span>
+            </div>
+            <div class="bnav-item" onclick="navTap(2, this)">
+                <div class="bnav-dot"></div><span class="bnav-label">CLI</span>
+            </div>
+            <div class="bnav-item" onclick="navTap(3, this)">
+                <div class="bnav-dot"></div><span class="bnav-label">Mood</span>
+            </div>
+            <div class="bnav-item" onclick="navTap(4, this)">
+                <div class="bnav-dot"></div><span class="bnav-label">Debug</span>
+            </div>
+        </nav>
+    </div><!-- /app -->
+
+    <div class="swipe-hint">◁ &nbsp;SWIPE&nbsp; ▷</div>
+
+    <script src="https://d3js.org/d3.v7.min.js"></script>
+    <script>
+        /* ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+           NAVIGATION
+        ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━ */
+        const TOTAL = 5;
+        let currentPage = 0;
+        const pagesEl = document.getElementById('pages');
+        const navItems = document.querySelectorAll('.bnav-item');
+        const indicator = document.getElementById('nav-indicator');
+        const progressFill = document.getElementById('swipe-progress-fill');
+        const pageDots = document.querySelectorAll('.page-dot');
+        const edgeGlow = document.getElementById('page-edge-glow');
+
+        function updateNavIndicator() {
+            const items = document.querySelectorAll('.bnav-item');
+            if (!items.length) return;
+            const active = items[currentPage];
+            if (!active) return;
+            indicator.style.left = active.offsetLeft + 'px';
+            indicator.style.width = active.offsetWidth + 'px';
+        }
+
+        function updateProgress() {
+            const pct = ((currentPage + 1) / TOTAL) * 100;
+            progressFill.style.width = pct + '%';
+        }
+
+        function updateDots() {
+            pageDots.forEach((d, i) => d.classList.toggle('active', i === currentPage));
+        }
+
+        function goPage(n, skipAnimation) {
+            const prev = currentPage;
+            currentPage = Math.max(0, Math.min(TOTAL - 1, n));
+
+            // Page entrance animation
+            document.querySelectorAll('.page').forEach((p, i) => {
+                p.classList.remove('page-active');
+            });
+
+            if (!skipAnimation) {
+                // Show edge glow on the side we're moving toward
+                const goRight = currentPage > prev;
+                const wrap = document.getElementById('pages-wrap');
+                const wrapW = wrap.offsetWidth;
+                const offset = currentPage * wrapW;
+                edgeGlow.style.left = goRight ? (offset + wrapW - 2) + 'px' : (offset) + 'px';
+                edgeGlow.classList.add('visible');
+                setTimeout(() => edgeGlow.classList.remove('visible'), 400);
+            }
+
+            pagesEl.style.transform = `translateX(-${currentPage * 100}%)`;
+            navItems.forEach((el, i) => el.classList.toggle('active', i === currentPage));
+            updateNavIndicator();
+            updateProgress();
+            updateDots();
+
+            // Trigger widget entrance on new page
+            setTimeout(() => {
+                const activePage = document.getElementById('page-' + currentPage);
+                if (activePage) activePage.classList.add('page-active');
+            }, 50);
+
+            // Animate bars on knowledge page
+            if (currentPage === 1) animateBars();
+
+            // Animate mood paths on mood page
+            if (currentPage === 3) animateMoodPaths();
+
+            // Auto-scroll console
+            if (currentPage === 1) scrollConsole();
+        }
+
+        function navTap(n, el) {
+            // Improvement 7: bounce animation
+            el.classList.remove('bounce');
+            void el.offsetWidth; // reflow trick to restart animation
+            el.classList.add('bounce');
+            el.addEventListener('animationend', () => el.classList.remove('bounce'), { once: true });
+            goPage(n);
+        }
+
+        /* ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+           TOUCH SWIPE
+        ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━ */
+        let touchStartX = 0, touchStartY = 0;
+        document.addEventListener('touchstart', e => {
+            touchStartX = e.touches[0].clientX;
+            touchStartY = e.touches[0].clientY;
+        }, { passive: true });
+        document.addEventListener('touchend', e => {
+            const dx = e.changedTouches[0].clientX - touchStartX;
+            const dy = e.changedTouches[0].clientY - touchStartY;
+            if (Math.abs(dx) > Math.abs(dy) && Math.abs(dx) > 50) {
+                dx < 0 ? goPage(currentPage + 1) : goPage(currentPage - 1);
+            }
+        }, { passive: true });
+
+        /* ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+           IMPROVEMENT 1: HEADER COLLAPSE ON SCROLL
+        ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━ */
+        const header = document.getElementById('main-header');
+        let lastScrollTop = 0;
+        document.querySelectorAll('.page').forEach(page => {
+            page.addEventListener('scroll', function () {
+                const st = this.scrollTop;
+                if (st > 10 && st > lastScrollTop) {
+                    header.classList.add('collapsed');
+                } else {
+                    header.classList.remove('collapsed');
+                }
+                lastScrollTop = st;
+            }, { passive: true });
+        });
+
+        /* ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+           IMPROVEMENT 8: STAT CARD RIPPLE
+        ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━ */
+        function addRipple(e, card) {
+            const rect = card.getBoundingClientRect();
+            const size = Math.max(rect.width, rect.height);
+            const ripple = document.createElement('div');
+            ripple.className = 'stat-ripple';
+            ripple.style.cssText = `width:${size}px;height:${size}px;top:${e.clientY - rect.top - size / 2}px;left:${e.clientX - rect.left - size / 2}px`;
+            card.appendChild(ripple);
+            ripple.addEventListener('animationend', () => ripple.remove());
+        }
+
+        /* ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+           IMPROVEMENT 9: KNOWLEDGE BAR ANIMATION
+        ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━ */
+        function animateBars() {
+            document.querySelectorAll('.k-bar-fill').forEach((bar, i) => {
+                // Store width from CSS var if set, else read from style attribute
+                const targetW = bar.style.getPropertyValue('--bar-w') || bar.getAttribute('data-w') || '50%';
+                bar.style.width = targetW;
+                setTimeout(() => bar.classList.add('bar-animate'), i * 80 + 50);
+            });
+        }
+
+        /* ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+           IMPROVEMENT 13: MOOD PATH DRAW ANIMATION
+        ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━ */
+        function animateMoodPaths() {
+            document.querySelectorAll('.mood-path-animated').forEach((path, i) => {
+                const len = path.getTotalLength ? path.getTotalLength() : 300;
+                path.style.strokeDasharray = len;
+                path.style.strokeDashoffset = len;
+                setTimeout(() => {
+                    path.style.strokeDashoffset = '0';
+                }, i * 200 + 100);
+            });
+        }
+
+        /* ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+           IMPROVEMENT 12: CONSOLE AUTO-SCROLL
+        ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━ */
+        function scrollConsole() {
+            const con = document.getElementById('console-output');
+            if (con) con.scrollTop = con.scrollHeight;
+        }
+        // Also auto-scroll when new content is added
+        const consoleObserver = new MutationObserver(scrollConsole);
+        const consoleEl = document.getElementById('console-output');
+        if (consoleEl) consoleObserver.observe(consoleEl, { childList: true, subtree: true });
+
+        /* ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+           IMPROVEMENT 3: TELEMETRY VALUE FLASH
+           Call flashVal(id) when a live value updates
+        ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━ */
+        function flashVal(id) {
+            const el = document.getElementById(id);
+            if (!el) return;
+            el.classList.remove('val-flash');
+            void el.offsetWidth;
+            el.classList.add('val-flash');
+            el.addEventListener('animationend', () => el.classList.remove('val-flash'), { once: true });
+        }
+        // Example: if your Flask SSE updates these, call flashVal('hm-cpu') etc.
+        // Expose so Flask-injected scripts can use it
+        window.flashVal = flashVal;
+
+        /* ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+           IMPROVEMENT 10: SEARCH PANEL
+        ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━ */
+        function clearSearch() {
+            document.getElementById('node-search').value = '';
+            searchNodes('');
+            document.getElementById('search-clear').style.display = 'none';
+            document.getElementById('search-count').style.display = 'none';
+        }
+
+        // Global reference, implemented inside buildCogMap to access D3 variables
+        window.searchNodes = function (val) { };
+
+        /* ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+           IMPROVEMENT 11: NODE DRAWER
+        ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━ */
+        function openDrawer(nodeData) {
+            document.getElementById('drawer-title').textContent = (nodeData.name || '').toUpperCase();
+            document.getElementById('drawer-type').textContent = (nodeData.group || 'unknown').toUpperCase();
+            document.getElementById('drawer-path').innerHTML = document.getElementById('node-path').innerHTML;
+            document.getElementById('drawer-meta').textContent = nodeData.details || 'No metadata available.';
+            document.getElementById('node-drawer').classList.add('open');
+            document.getElementById('drawer-scrim').classList.add('visible');
+        }
+        function closeDrawer() {
+            document.getElementById('node-drawer').classList.remove('open');
+            document.getElementById('drawer-scrim').classList.remove('visible');
+        }
+        window.openDrawer = openDrawer;
+        window.closeDrawer = closeDrawer;
+
+        /* ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+           D3 GRAPH
+        ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━ */
+        const allCogNodes = {{ graph_nodes | tojson | safe }};
+        const allCogLinks = {{ graph_links | tojson | safe }};
+        let currentSim = null;
+
+        function buildCogMap(pct) {
+            const wrap = document.getElementById('brain-canvas-wrap');
+            const W = wrap.offsetWidth, H = wrap.offsetHeight;
+            const svg = d3.select('#cog-map-svg').attr('viewBox', '0 0 ' + W + ' ' + H);
+            svg.selectAll('*').remove();
+            if (currentSim) currentSim.stop();
+
+            const coreNodes = allCogNodes.filter(n => n.group !== 'data');
+            const dataNodes = allCogNodes.filter(n => n.group === 'data');
+            const visibleData = dataNodes.slice(0, Math.floor(dataNodes.length * (pct / 100)));
+            const visibleNodes = [...coreNodes, ...visibleData];
+            const visibleIds = new Set(visibleNodes.map(n => n.id));
+            const visibleLinks = allCogLinks.filter(l =>
+                visibleIds.has(l.source.id || l.source) && visibleIds.has(l.target.id || l.target));
+
+            document.getElementById('node-count-label').textContent = visibleNodes.length + ' NODES';
+            const g = svg.append('g');
+
+            currentSim = d3.forceSimulation(visibleNodes)
+                .force('link', d3.forceLink(visibleLinks).id(d => d.id).distance(100))
+                .force('charge', d3.forceManyBody().strength(-150))
+                .force('center', d3.forceCenter(W / 2, H / 2));
+
+            const link = g.append('g').selectAll('line').data(visibleLinks).enter()
+                .append('line').attr('stroke', '#333').attr('stroke-width', 0.5);
+
+            const coreNode = visibleNodes.find(n => n.group === 'core' && n.id === 'BRAIN');
+            if (coreNode) {
+                g.append("circle").attr("class", "core-ripple").attr("r", 15)
+                    .attr("fill", "none").attr("stroke", coreNode.color).attr("stroke-width", 1)
+                    .style("animation", "pulse 2s infinite");
+                g.append("circle").attr("class", "core-ripple").attr("r", 15)
+                    .attr("fill", "none").attr("stroke", coreNode.color).attr("stroke-width", 1)
+                    .style("animation", "pulse 2s infinite").style("animation-delay", "1s");
+            }
+
+            const node = g.append('g').selectAll('g').data(visibleNodes).enter().append('g')
+                .on('click', (e, d) => {
+                    focusNode(d);
+                    openDrawer(d); // Improvement 11: open drawer on node click
+                });
+
+            node.append('circle')
+                .attr("r", d => d.group === 'core' ? 14 : d.group === 'hub' ? 10 : d.group === 'user' ? 7 : 4)
+                .attr("fill", "#050505")
+                .attr("stroke", d => d.color || '#00e5ff')
+                .attr("stroke-width", d => d.group === 'data' ? 1 : 2)
+                .style("filter", d => d.group !== 'data' ? "drop-shadow(0 0 10px " + (d.color || '#00e5ff') + ")" : "none");
+
+            const labels = node.append("text")
+                .text(d => d.name.length > 25 ? d.name.substring(0, 22) + "..." : d.name)
+                .attr("font-size", d => d.group === 'core' ? 12 : 8)
+                .attr("fill", "rgba(255,255,255,0.8)")
+                .attr("dx", 8).attr("dy", 2)
+                .style("opacity", d => (d.group === 'core' || d.group === 'hub' || d.group === 'user') ? 1 : 0)
+                .style("pointer-events", "none");
+
+            const signalLinks = visibleLinks.filter(l => {
+                const src = l.source.id || l.source;
+                return src === 'BRAIN' || src === 'USER';
+            });
+
+            const packets = g.append("g").selectAll("circle").data(signalLinks).enter()
+                .append("circle").attr("r", 1.5).attr("fill", "#fff").style("filter", "blur(1px)");
+
+            const currentZoom = d3.zoom().on('zoom', e => {
+                g.attr('transform', e.transform);
+                labels.style("opacity", d =>
+                    (d.group === 'core' || d.group === 'hub' || d.group === 'user' || e.transform.k > 1.5) ? 1 : 0);
+            });
+            svg.call(currentZoom);
+
+            function focusNode(d) {
+                document.getElementById('node-target').textContent = d.name.toUpperCase();
+                document.getElementById('node-type').textContent = (d.group || 'unknown').toUpperCase();
+                flashVal('node-type');   // Improvement 3: flash on update
+                flashVal('node-target');
+
+                let path = [], current = d, maxIter = 10, iter = 0;
+                if (current.group !== 'data') path.unshift(current.name.toUpperCase());
+                while (current && current.id !== 'BRAIN' && current.id !== 'USER' && iter < maxIter) {
+                    let parentLink = visibleLinks.find(l =>
+                        (l.target.id || l.target) === current.id || l.target === current);
+                    if (parentLink) {
+                        current = parentLink.source;
+                        if (current.group !== 'data') path.unshift(current.name.toUpperCase());
+                    } else break;
+                    iter++;
+                }
+                document.getElementById('node-path').innerHTML = "◉ &nbsp; " + path.join(" &rarr; ");
+                document.getElementById('node-metadata').textContent = d.details || '';
+                document.getElementById('node-del-btn').style.display = 'inline-block';
+                window.selectedNodeId = d.id;
+
+                const pulse = g.append("circle")
+                    .attr("cx", d.x).attr("cy", d.y).attr("r", 5)
+                    .attr("fill", "none").attr("stroke", d.color || '#00e5ff')
+                    .attr("stroke-width", 2).style("opacity", 1);
+                pulse.transition().duration(1200).attr("r", 150).style("opacity", 0).remove();
+
+                const transform = d3.zoomIdentity.translate(W / 2, H / 2).scale(1.5).translate(-d.x, -d.y);
+                svg.transition().duration(750).call(currentZoom.transform, transform);
+            }
+
+            currentSim.on('tick', () => {
+                link.attr('x1', d => d.source.x).attr('y1', d => d.source.y)
+                    .attr('x2', d => d.target.x).attr('y2', d => d.target.y);
+                node.attr("transform", d => `translate(${d.x},${d.y})`);
+                if (coreNode) g.selectAll(".core-ripple").attr("cx", coreNode.x).attr("cy", coreNode.y);
+            });
+
+            d3.timer(() => {
+                const speed = 0.0008;
+                packets.attr("cx", d => {
+                    const t = (Date.now() * speed + signalLinks.indexOf(d) * 0.1) % 1;
+                    return d.source.x + (d.target.x - d.source.x) * t;
+                }).attr("cy", d => {
+                    const t = (Date.now() * speed + signalLinks.indexOf(d) * 0.1) % 1;
+                    return d.source.y + (d.target.y - d.source.y) * t;
+                });
+            });
+
+            window.searchNodes = function (val) {
+                const clearBtn = document.getElementById('search-clear');
+                const countBadge = document.getElementById('search-count');
+                clearBtn.style.display = val && val.length > 0 ? 'block' : 'none';
+
+                let matches = [];
+                if (!val) {
+                    node.style('opacity', 1);
+                    link.style('opacity', 1);
+                    labels.style('opacity', d => (d.group === 'core' || d.group === 'hub' || d.group === 'user') ? 1 : 0);
+                    countBadge.style.display = 'none';
+                } else {
+                    const term = val.toLowerCase();
+                    node.style('opacity', d => {
+                        const match = d.name.toLowerCase().includes(term) || (d.details && d.details.toLowerCase().includes(term));
+                        if (match) matches.push(d);
+                        return match ? 1 : 0.1;
+                    });
+                    link.style('opacity', 0.1);
+                    labels.style('opacity', d => {
+                        return (d.name.toLowerCase().includes(term) || (d.details && d.details.toLowerCase().includes(term))) ? 1 : 0;
+                    });
+
+                    if (matches.length > 0) {
+                        countBadge.textContent = matches.length;
+                        countBadge.style.display = 'block';
+
+                        // Auto-select logic: if exactly 1 match OR an exact name match exists
+                        if (val.length > 2) {
+                            let bestMatch = matches.find(d => d.name.toLowerCase() === term);
+                            if (!bestMatch && matches.length === 1) bestMatch = matches[0];
+
+                            if (bestMatch && window.selectedNodeId !== bestMatch.id) {
+                                focusNode(bestMatch);
+                                openDrawer(bestMatch);
+                            }
+                        }
+                    } else {
+                        countBadge.textContent = "0";
+                        countBadge.style.display = 'block';
+                    }
+                }
+            };
+        }
+
+        window.updateCogMap = val => buildCogMap(parseInt(val));
+        buildCogMap(100);
+
+        function sysAction(action) {
+            fetch(`/api/system/${action}`, { method: 'POST' })
+                .then(() => { alert('Signal Sent'); location.reload(); });
+        }
+
+        function deleteSelectedNode() {
+            if (!window.selectedNodeId) return;
+            fetch(`/api/node/delete/${window.selectedNodeId}`, { method: 'DELETE' })
+                .then(r => r.json())
+                .then(() => {
+                    closeDrawer();
+                    buildCogMap(parseInt(document.getElementById('node-slider').value));
+                });
+        }
+
+        /* ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+           INIT
+        ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━ */
+        // Position nav indicator after DOM layout
+        window.addEventListener('load', () => {
+            updateNavIndicator();
+            updateProgress();
+            // Trigger entrance for page 0
+            document.getElementById('page-0').classList.add('page-active');
+
+            // Load debug logs
+            fetchDebugLogs();
+
+            // Live Telemetry Loop (every 2 seconds)
+            setInterval(function () {
+                fetch('/api/stats')
+                    .then(r => r.json())
+                    .then(data => {
+                        if (data.error) return;
+
+                        document.getElementById('hm-cpu').textContent = Math.round(data.cpu) + '%';
+                        document.getElementById('hm-ram').textContent = Math.round(data.ram) + '%';
+                        document.getElementById('hm-facts').textContent = data.facts;
+                        document.getElementById('hm-activity').textContent = data.activity;
+
+                        const stateHeader = document.getElementById('hm-state');
+                        if (stateHeader) stateHeader.textContent = (data.state || '').toUpperCase();
+
+                        const stressLabel = document.getElementById('hm-stress-label');
+                        if (stressLabel) stressLabel.textContent = (data.state || '').toUpperCase();
+
+                        const stressEl = document.getElementById('hm-stress');
+                        if (stressEl) {
+                            const nextStress = data.stress + '%';
+                            if (stressEl.textContent !== nextStress) {
+                                stressEl.textContent = nextStress;
+                                if (data.stress > 30) {
+                                    stressEl.classList.add('orange');
+                                    stressEl.classList.remove('green');
+                                } else {
+                                    stressEl.classList.add('green');
+                                    stressEl.classList.remove('orange');
+                                }
+                                flashVal('hm-stress');
+                            }
+                        }
+                    })
+                    .catch(e => console.error("Telemetry Error:", e));
+            }, 2000);
+        });
+        window.addEventListener('resize', updateNavIndicator);
+
+        /* ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+           DEBUG PAGE LOGIC
+        ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━ */
+        let windowDebugData = [];
+
+        function fetchDebugLogs() {
+            fetch('/api/debug/logs')
+                .then(r => r.json())
+                .then(data => {
+                    if (data.error) return;
+                    windowDebugData = data;
+                    const sel = document.getElementById('debug-log-select');
+                    // keep first option, remove rest
+                    while (sel.options.length > 1) sel.remove(1);
+                    data.forEach(log => {
+                        const opt = document.createElement('option');
+                        opt.value = log.id;
+                        opt.textContent = `${log.timestamp.slice(-8)} - ${log.prompt.slice(0, 45)}...`;
+                        sel.appendChild(opt);
+                    });
+                })
+                .catch(e => console.error(e));
+        }
+
+        function createDebugCard(title, content, colorHex) {
+            content = content || "None retrieved";
+            return `
+                <div style="background:rgba(10,12,18,0.9); border:1px solid ${colorHex}55; border-radius:8px; padding:12px; box-shadow:0 4px 12px rgba(0,0,0,0.3);">
+                    <div style="font-family:'Space Grotesk',sans-serif;font-size:11px;color:${colorHex};font-weight:700;margin-bottom:8px;text-transform:uppercase;">${title}</div>
+                    <div style="font-family:monospace;font-size:10px;color:var(--text-dim);background:rgba(0,0,0,0.5);padding:8px;border-radius:4px;white-space:pre-wrap;max-height:150px;overflow-y:auto;border:1px solid rgba(255,255,255,0.05);">${content}</div>
+                </div>
+            `;
+        }
+
+        function loadDebugLog(idStr) {
+            const area = document.getElementById('debug-content-area');
+            if (!idStr) {
+                area.style.display = 'none';
+                return;
+            }
+            const logId = parseInt(idStr);
+            const log = windowDebugData.find(l => l.id === logId);
+            if (!log) return;
+
+            area.style.display = 'flex';
+
+            const cont = document.getElementById('debug-cards-container');
+            const s = log.sections;
+
+            let html = "";
+            // Using similar colors to the legacy dashboard
+            html += createDebugCard("Persona", s.Persona, "#5c6bc0");
+            html += createDebugCard("Context", s.Context, "#3949ab");
+            html += createDebugCard("Instructions", s.Instructions, "#e53935");
+            html += createDebugCard("User Input", log.prompt, "#43a047");
+            if (s.Memories && s.Memories !== "None retrieved" && s.Memories !== "Not found") {
+                html += createDebugCard("Memories", s.Memories, "#8e24aa");
+            }
+            if (s.History && s.History !== "Not found") {
+                html += createDebugCard("History", s.History, "#fdd835");
+            }
+            if (s.Facts && s.Facts !== "Not found") {
+                html += createDebugCard("Facts", s.Facts, "#00acc1");
+            }
+
+            cont.innerHTML = html;
+            document.getElementById('debug-raw-prompt').textContent = log.full_prompt;
+        }
+
+        /* ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+           MOOD ANALYTICS CHARTS
+        ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━ */
+        let moodDataLoaded = false;
+
+        function loadMoodAnalytics() {
+            if (moodDataLoaded) return;
+            moodDataLoaded = true;
+
+            fetch('/api/mood/analytics')
+                .then(r => r.json())
+                .then(data => {
+                    if (data.error) return;
+                    renderMoodBar(data.mood_counts);
+                    renderMoodTimeline(data.timeline);
+                    renderActivityBar(data.activity_by_hour);
+                })
+                .catch(e => console.error('Mood analytics error:', e));
+        }
+
+        // Color palette for moods
+        const moodColors = {
+            'admiration': '#42a5f5', 'amusement': '#ab47bc', 'anger': '#ef5350',
+            'annoyance': '#ff7043', 'approval': '#66bb6a', 'caring': '#ec407a',
+            'confusion': '#ffa726', 'curiosity': '#29b6f6', 'desire': '#f44336',
+            'disappointment': '#78909c', 'disapproval': '#8d6e63', 'disgust': '#4caf50',
+            'embarrassment': '#ff8a65', 'excitement': '#ffee58', 'fear': '#7e57c2',
+            'gratitude': '#26a69a', 'grief': '#546e7a', 'joy': '#ffca28',
+            'love': '#e91e63', 'nervousness': '#9575cd', 'neutral': '#ef5350',
+            'optimism': '#26c6da', 'pride': '#ffd54f', 'realization': '#4dd0e1',
+            'relief': '#81c784', 'remorse': '#4caf50', 'sadness': '#5c6bc0',
+            'surprise': '#ff7043'
+        };
+        function getMoodColor(mood) {
+            return moodColors[mood.toLowerCase()] || '#7dd3fc';
+        }
+
+        function renderMoodBar(counts) {
+            const svg = d3.select('#mood-bar-svg');
+            const container = svg.node().parentElement;
+            const W = container.clientWidth - 28;
+            const H = 180;
+            svg.attr('width', W).attr('height', H);
+            svg.selectAll('*').remove();
+
+            const entries = Object.entries(counts).sort((a, b) => b[1] - a[1]).slice(0, 8);
+            if (!entries.length) {
+                svg.append('text').attr('x', W / 2).attr('y', H / 2).attr('text-anchor', 'middle')
+                    .attr('fill', '#555').attr('font-size', '12px').text('No mood data available');
+                return;
+            }
+
+            const margin = { top: 10, right: 20, bottom: 40, left: 10 };
+            const w = W - margin.left - margin.right;
+            const h = H - margin.top - margin.bottom;
+            const g = svg.append('g').attr('transform', `translate(${margin.left},${margin.top})`);
+
+            const x = d3.scaleBand().domain(entries.map(d => d[0])).range([0, w]).padding(0.3);
+            const y = d3.scaleLinear().domain([0, d3.max(entries, d => d[1])]).nice().range([h, 0]);
+
+            // Y axis
+            g.append('g')
+                .call(d3.axisLeft(y).ticks(5).tickSize(-w).tickFormat(d3.format('d')))
+                .call(g => g.select('.domain').remove())
+                .call(g => g.selectAll('.tick line').attr('stroke', 'rgba(0,248,255,0.08)'))
+                .call(g => g.selectAll('.tick text').attr('fill', '#888').attr('font-size', '9px').attr('font-family', 'monospace'));
+
+            // Bars
+            g.selectAll('.bar').data(entries).enter().append('rect')
+                .attr('x', d => x(d[0]))
+                .attr('width', x.bandwidth())
+                .attr('y', h)
+                .attr('height', 0)
+                .attr('fill', d => getMoodColor(d[0]))
+                .attr('rx', 3)
+                .attr('opacity', 0.85)
+                .transition().duration(800).delay((d, i) => i * 80)
+                .attr('y', d => y(d[1]))
+                .attr('height', d => h - y(d[1]));
+
+            // X labels
+            g.selectAll('.x-label').data(entries).enter().append('text')
+                .attr('x', d => x(d[0]) + x.bandwidth() / 2)
+                .attr('y', h + 14)
+                .attr('text-anchor', 'middle')
+                .attr('fill', '#aaa')
+                .attr('font-size', '8px')
+                .attr('font-family', 'monospace')
+                .attr('transform', d => `rotate(-25, ${x(d[0]) + x.bandwidth() / 2}, ${h + 14})`)
+                .text(d => d[0]);
+
+            // Count labels on bars
+            g.selectAll('.count-label').data(entries).enter().append('text')
+                .attr('x', d => x(d[0]) + x.bandwidth() / 2)
+                .attr('y', d => y(d[1]) - 4)
+                .attr('text-anchor', 'middle')
+                .attr('fill', '#ccc')
+                .attr('font-size', '9px')
+                .attr('font-family', 'monospace')
+                .text(d => d[1]);
+        }
+
+        function renderMoodTimeline(timeline) {
+            const svg = d3.select('#mood-timeline-svg');
+            const container = svg.node().parentElement;
+            const W = container.clientWidth - 28;
+            const H = 200;
+            svg.attr('width', W).attr('height', H);
+            svg.selectAll('*').remove();
+
+            if (!timeline || !timeline.length) {
+                svg.append('text').attr('x', W / 2).attr('y', H / 2).attr('text-anchor', 'middle')
+                    .attr('fill', '#555').attr('font-size', '12px').text('No timeline data');
+                return;
+            }
+
+            // Parse and sort by time
+            const parsed = timeline.map(d => ({
+                time: new Date(d.timestamp),
+                mood: d.mood
+            })).filter(d => !isNaN(d.time)).sort((a, b) => a.time - b.time);
+
+            const moods = [...new Set(parsed.map(d => d.mood))];
+
+            const margin = { top: 10, right: 20, bottom: 35, left: 75 };
+            const w = W - margin.left - margin.right;
+            const h = H - margin.top - margin.bottom;
+            const g = svg.append('g').attr('transform', `translate(${margin.left},${margin.top})`);
+
+            const x = d3.scaleTime().domain(d3.extent(parsed, d => d.time)).range([0, w]);
+            const y = d3.scaleBand().domain(moods).range([0, h]).padding(0.3);
+
+            // X axis
+            g.append('g').attr('transform', `translate(0,${h})`)
+                .call(d3.axisBottom(x).ticks(6).tickFormat(d3.timeFormat('%H:%M')))
+                .call(g => g.select('.domain').attr('stroke', 'rgba(0,248,255,0.15)'))
+                .call(g => g.selectAll('.tick line').attr('stroke', 'rgba(0,248,255,0.08)'))
+                .call(g => g.selectAll('.tick text').attr('fill', '#888').attr('font-size', '9px').attr('font-family', 'monospace'));
+
+            // Y axis (mood labels)
+            g.append('g')
+                .call(d3.axisLeft(y).tickSize(0))
+                .call(g => g.select('.domain').remove())
+                .call(g => g.selectAll('.tick text').attr('fill', '#aaa').attr('font-size', '9px').attr('font-family', 'monospace'));
+
+            // Grid lines
+            g.selectAll('.grid-line').data(moods).enter().append('line')
+                .attr('x1', 0).attr('x2', w)
+                .attr('y1', d => y(d) + y.bandwidth() / 2)
+                .attr('y2', d => y(d) + y.bandwidth() / 2)
+                .attr('stroke', 'rgba(0,248,255,0.06)')
+                .attr('stroke-dasharray', '2,4');
+
+            // Dots
+            g.selectAll('.dot').data(parsed).enter().append('circle')
+                .attr('cx', d => x(d.time))
+                .attr('cy', d => y(d.mood) + y.bandwidth() / 2)
+                .attr('r', 0)
+                .attr('fill', d => getMoodColor(d.mood))
+                .attr('opacity', 0.85)
+                .attr('stroke', '#fff')
+                .attr('stroke-width', 0.5)
+                .transition().duration(600).delay((d, i) => i * 30)
+                .attr('r', 5);
+
+            // Legend
+            const legend = svg.append('g').attr('transform', `translate(${margin.left}, ${H - 8})`);
+            moods.slice(0, 6).forEach((m, i) => {
+                const lg = legend.append('g').attr('transform', `translate(${i * 65}, 0)`);
+                lg.append('circle').attr('r', 3).attr('fill', getMoodColor(m));
+                lg.append('text').attr('x', 6).attr('y', 4).attr('fill', '#888').attr('font-size', '7px').attr('font-family', 'monospace').text(m);
+            });
+        }
+
+        function renderActivityBar(actByHour) {
+            const svg = d3.select('#activity-bar-svg');
+            const container = svg.node().parentElement;
+            const W = container.clientWidth - 28;
+            const H = 160;
+            svg.attr('width', W).attr('height', H);
+            svg.selectAll('*').remove();
+
+            const entries = Object.entries(actByHour).map(([h, v]) => [parseInt(h), v]).sort((a, b) => a[0] - b[0]);
+            if (!entries.length) {
+                svg.append('text').attr('x', W / 2).attr('y', H / 2).attr('text-anchor', 'middle')
+                    .attr('fill', '#555').attr('font-size', '12px').text('No activity data');
+                return;
+            }
+
+            const margin = { top: 10, right: 10, bottom: 28, left: 30 };
+            const w = W - margin.left - margin.right;
+            const h = H - margin.top - margin.bottom;
+            const g = svg.append('g').attr('transform', `translate(${margin.left},${margin.top})`);
+
+            const x = d3.scaleBand().domain(entries.map(d => d[0])).range([0, w]).padding(0.25);
+            const y = d3.scaleLinear().domain([0, d3.max(entries, d => d[1])]).nice().range([h, 0]);
+
+            // Y axis
+            g.append('g')
+                .call(d3.axisLeft(y).ticks(4).tickSize(-w).tickFormat(d3.format('d')))
+                .call(g => g.select('.domain').remove())
+                .call(g => g.selectAll('.tick line').attr('stroke', 'rgba(0,248,255,0.08)'))
+                .call(g => g.selectAll('.tick text').attr('fill', '#888').attr('font-size', '9px').attr('font-family', 'monospace'));
+
+            // Bars
+            g.selectAll('.bar').data(entries).enter().append('rect')
+                .attr('x', d => x(d[0]))
+                .attr('width', x.bandwidth())
+                .attr('y', h)
+                .attr('height', 0)
+                .attr('fill', '#7dd3fc')
+                .attr('rx', 2)
+                .attr('opacity', 0.75)
+                .transition().duration(600).delay((d, i) => i * 40)
+                .attr('y', d => y(d[1]))
+                .attr('height', d => h - y(d[1]));
+
+            // X labels
+            g.selectAll('.x-label').data(entries).enter().append('text')
+                .attr('x', d => x(d[0]) + x.bandwidth() / 2)
+                .attr('y', h + 16)
+                .attr('text-anchor', 'middle')
+                .attr('fill', '#888')
+                .attr('font-size', '8px')
+                .attr('font-family', 'monospace')
+                .text(d => String(d[0]).padStart(2, '0'));
+        }
+
+        // Load tab-specific logic when navigating
+        const _origGoPage = goPage;
+        goPage = function (n, skip) {
+            _origGoPage(n, skip);
+            if (n === 1) loadFacts();
+            if (n === 2) startCliStream();
+            else stopCliStream();
+            if (n === 3) loadMoodAnalytics();
+        };
+
+        /* ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+           CLI DASHBOARD LOGIC
+        ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━ */
+        let cliPollInterval = null;
+        const cliOutput = document.getElementById('cli-output-content');
+        const cliContainer = document.getElementById('cli-output-container');
+
+        function fetchCliLogs() {
+            fetch('/api/cli/logs')
+                .then(r => r.json())
+                .then(data => {
+                    if (data.error) return;
+                    if (data.lines && data.lines.length > 0) {
+                        // We replace the content with the latest lines to prevent infinite DOM growth
+                        // For a true scrolling experience while maintaining performance, 200 lines is a good buffer.
+
+                        // We only want to append/scroll if the content has actually changed or on first load.
+                        // Since we are fetching the tail, we just replace.
+                        const newText = data.lines.join('\n');
+                        // Simple naive check to see if we need to update the DOM
+                        if (cliOutput.textContent !== newText) {
+                            const isScrolledToBottom = cliContainer.scrollHeight - cliContainer.clientHeight <= cliContainer.scrollTop + 50;
+                            cliOutput.textContent = newText;
+                            if (isScrolledToBottom) {
+                                cliContainer.scrollTop = cliContainer.scrollHeight;
+                            }
+                        }
+                    }
+                })
+                .catch(e => console.error('CLI sync error:', e));
+        }
+
+        function startCliStream() {
+            if (!cliPollInterval) {
+                fetchCliLogs(); // Fetch immediately
+                cliPollInterval = setInterval(fetchCliLogs, 2000); // Polling every 2s
+            }
+        }
+
+        function stopCliStream() {
+            if (cliPollInterval) {
+                clearInterval(cliPollInterval);
+                cliPollInterval = null;
+            }
+        }
+
+        /* ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+           FACTS DASHBOARD LOGIC
+        ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━ */
+        let factsData = [];
+        let factsLoaded = false;
+
+        function loadFacts() {
+            if (factsLoaded) return;
+            factsLoaded = true;
+            fetch('/api/facts/list')
+                .then(r => r.json())
+                .then(data => {
+                    if (data.error) return;
+                    factsData = data;
+                    renderFactsTable(data);
+                    renderFactsGraph(data);
+                })
+                .catch(e => console.error('Facts load error:', e));
+        }
+
+        function renderFactsTable(data) {
+            const tbody = document.getElementById('fact-table-body');
+            tbody.innerHTML = "";
+
+            data.slice(0, 50).forEach(f => {
+                const tr = document.createElement('tr');
+                tr.style.borderBottom = "1px solid rgba(255,255,255,0.03)";
+                tr.innerHTML = `
+                    <td style="padding:8px; color:var(--text-dim);">${f.id}</td>
+                    <td style="padding:8px;">
+                        <input type="text" value="${f.user_id}" class="fact-input" data-id="${f.id}" data-key="user_id" style="width:100%; padding:4px; background:rgba(0,0,0,0.3); border:1px solid transparent; color:var(--text-dim); font-size:9px; border-radius:3px;">
+                    </td>
+                    <td style="padding:8px;">
+                        <input type="text" value="${f.subject}" class="fact-input" data-id="${f.id}" data-key="subject" style="width:100%; padding:4px; background:rgba(0,0,0,0.3); border:1px solid transparent; color:var(--text); font-size:9px; border-radius:3px;">
+                    </td>
+                    <td style="padding:8px;">
+                        <input type="text" value="${f.predicate}" class="fact-input" data-id="${f.id}" data-key="predicate" style="width:100%; padding:4px; background:rgba(0,0,0,0.3); border:1px solid transparent; color:var(--cyan); font-size:9px; border-radius:3px;">
+                    </td>
+                    <td style="padding:8px;">
+                        <input type="text" value="${f.object}" class="fact-input" data-id="${f.id}" data-key="object" style="width:100%; padding:4px; background:rgba(0,0,0,0.3); border:1px solid transparent; color:#81c784; font-size:9px; border-radius:3px;">
+                    </td>
+                `;
+                tbody.appendChild(tr);
+            });
+        }
+
+        function saveFactChanges() {
+            const btn = document.getElementById('save-facts-btn');
+            const originalText = btn.innerHTML;
+            btn.innerHTML = "<span>⏳</span>PENDING...";
+            btn.style.opacity = "0.6";
+
+            const inputs = document.querySelectorAll('.fact-input');
+            const updates = {};
+
+            inputs.forEach(inp => {
+                const id = inp.getAttribute('data-id');
+                const key = inp.getAttribute('data-key');
+                if (!updates[id]) updates[id] = { id: parseInt(id) };
+                updates[id][key] = inp.value;
+            });
+
+            const factPayload = Object.values(updates);
+
+            fetch('/api/facts/update', {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify({ facts: factPayload })
+            })
+                .then(r => r.json())
+                .then(res => {
+                    if (res.status === 'updated') {
+                        btn.innerHTML = "<span>✅</span>SUCCESS";
+                        btn.style.background = "rgba(102,187,106,0.15)";
+                        btn.style.borderColor = "rgba(102,187,106,0.4)";
+                        setTimeout(() => {
+                            btn.innerHTML = originalText;
+                            btn.style.background = "rgba(142,36,170,0.15)";
+                            btn.style.borderColor = "rgba(142,36,170,0.4)";
+                            btn.style.opacity = "1";
+                        }, 2000);
+                        // Refresh graph
+                        factsLoaded = false;
+                        loadFacts();
+                    }
+                });
+        }
+
+        function renderFactsGraph(data) {
+            const svg = d3.select('#facts-graph-svg');
+            const container = document.getElementById('facts-graph-container');
+            const W = container.clientWidth;
+            const H = 300;
+            svg.selectAll('*').remove();
+
+            const simulation = d3.forceSimulation()
+                .force("link", d3.forceLink().id(d => d.id).distance(100))
+                .force("charge", d3.forceManyBody().strength(-150))
+                .force("center", d3.forceCenter(W / 2, H / 2));
+
+            const nodes = [];
+            const links = [];
+            const entities = new Map();
+
+            data.slice(0, 30).forEach(f => {
+                if (!entities.has(f.subject)) {
+                    entities.set(f.subject, { id: f.subject, name: f.subject, group: 'subject' });
+                    nodes.push(entities.get(f.subject));
+                }
+                if (!entities.has(f.object)) {
+                    entities.set(f.object, { id: f.object, name: f.object, group: 'object' });
+                    nodes.push(entities.get(f.object));
+                }
+                links.push({ source: f.subject, target: f.object, label: f.predicate });
+            });
+
+            const link = svg.append("g")
+                .selectAll("line")
+                .data(links)
+                .enter().append("line")
+                .attr("stroke", "rgba(0,248,255,0.2)")
+                .attr("stroke-width", 1);
+
+            const linkLabels = svg.append("g")
+                .selectAll("text")
+                .data(links)
+                .enter().append("text")
+                .attr("fill", "rgba(0,248,255,0.4)")
+                .attr("font-size", "7px")
+                .attr("text-anchor", "middle")
+                .text(d => d.label);
+
+            const node = svg.append("g")
+                .selectAll("g")
+                .data(nodes)
+                .enter().append("g")
+                .call(d3.drag()
+                    .on("start", dragstarted)
+                    .on("drag", dragged)
+                    .on("end", dragended));
+
+            node.append("rect")
+                .attr("width", d => Math.max(40, d.name.length * 6))
+                .attr("height", 18)
+                .attr("x", d => -Math.max(40, d.name.length * 6) / 2)
+                .attr("y", -9)
+                .attr("rx", 4)
+                .attr("fill", d => d.group === 'subject' ? "rgba(76,175,80,0.3)" : "rgba(76,175,80,0.6)")
+                .attr("stroke", d => d.group === 'subject' ? "rgba(76,175,80,0.6)" : "#76ff03")
+                .attr("stroke-width", 1);
+
+            node.append("text")
+                .attr("dy", 3)
+                .attr("text-anchor", "middle")
+                .attr("fill", "#fff")
+                .attr("font-size", "8px")
+                .text(d => d.name);
+
+            simulation.nodes(nodes).on("tick", () => {
+                link.attr("x1", d => d.source.x).attr("y1", d => d.source.y)
+                    .attr("x2", d => d.target.x).attr("y2", d => d.target.y);
+
+                linkLabels.attr("x", d => (d.source.x + d.target.x) / 2)
+                    .attr("y", d => (d.source.y + d.target.y) / 2 - 5);
+
+                node.attr("transform", d => `translate(${d.x},${d.y})`);
+            });
+
+            simulation.force("link").links(links);
+
+            function dragstarted(event, d) {
+                if (!event.active) simulation.alphaTarget(0.3).restart();
+                d.fx = d.x; d.fy = d.y;
+            }
+            function dragged(event, d) {
+                d.fx = event.x; d.fy = event.y;
+            }
+            function dragended(event, d) {
+                if (!event.active) simulation.alphaTarget(0);
+                d.fx = null; d.fy = null;
+            }
+        }
+    </script>
+</body>
+
+</html>

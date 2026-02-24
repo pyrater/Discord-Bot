@@ -192,8 +192,8 @@ class Admin(commands.Cog):
             
         await ctx.send("🔄 **Restarting TARS service...** See you in a few seconds.")
         # Note: Supervisor loop in boot.sh will restart the process
-        # We exit with 0 to signal a clean restart request
-        sys.exit(0)
+        # os._exit ignores exception handlers in the event loop and forcefully terminates
+        os._exit(0)
     
     @commands.hybrid_command(name="ingest", description="Run knowledge ingestion script. (Admin Only)")
     async def ingest(self, ctx):

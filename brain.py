@@ -7,7 +7,12 @@ import json
 import random
 import httpx
 from datetime import datetime
-from llama_cpp import Llama
+try:
+    from llama_cpp import Llama
+except ImportError:
+    Llama = None
+    logging.warning("🧠 Brain: llama-cpp-python not found. Local Gatekeeper disabled.")
+
 import math
 import sys
 import subprocess

@@ -22,11 +22,27 @@ class MemoryEngine:
         # Initialize Database connection
         self._init_sqlite()
         
-        # Initialize Vector Store
-        self.chroma_client = chromadb.PersistentClient(path=self.chroma_path)
-        self.collection = self.chroma_client.get_or_create_collection(name="user_memories")
-        self.knowledge_collection = self.chroma_client.get_or_create_collection(name="tars_knowledge")
-        self.summary_collection = self.chroma_client.get_or_create_collection(name="conversation_summaries")
+        # Initialize Vector Store with self-healing to prevent startup crashes
+        try:
+            self.chroma_client = chromadb.PersistentClient(path=self.chroma_path)
+            self.collection = self.chroma_client.get_or_create_collection(name="user_memories")
+            self.knowledge_collection = self.chroma_client.get_or_create_collection(name="tars_knowledge")
+            self.summary_collection = self.chroma_client.get_or_create_collection(name="conversation_summaries")
+        except Exception as e:
+            logging.error(f"❌ ChromaDB corruption detected on startup: {e}. Attempting self-healing...")
+            if os.path.exists(self.chroma_path):
+                backup_path = f"{self.chroma_path}_startup_recovery_{int(datetime.now().timestamp())}"
+                try:
+                    os.rename(self.chroma_path, backup_path)
+                    logging.warning(f"🩹 Corrupted store isolated to {backup_path}. Initializing fresh store.")
+                except Exception as rename_err:
+                    logging.error(f"❌ Startup recovery failed (rename blocked): {rename_err}")
+            
+            # Final attempt to initialize (will create fresh files if path was moved or if it still exists)
+            self.chroma_client = chromadb.PersistentClient(path=self.chroma_path)
+            self.collection = self.chroma_client.get_or_create_collection(name="user_memories")
+            self.knowledge_collection = self.chroma_client.get_or_create_collection(name="tars_knowledge")
+            self.summary_collection = self.chroma_client.get_or_create_collection(name="conversation_summaries")
         
     @contextlib.contextmanager
     def _get_connection(self, use_row_factory=False):
@@ -108,29 +124,42 @@ class MemoryEngine:
             # 2. Chroma Wipe
             # We physically delete the directory to ensure no stale SQLite/WAL files remain
             try:
-                # Reset references to prevent using closed DB
+                # Nullify references to prevent locks from being held by Python objects
                 self.collection = None
                 self.knowledge_collection = None
                 self.summary_collection = None
+                self.chroma_client = None
                 
                 if os.path.exists(self.chroma_path):
                     logging.warning(f"🧹 Memory Engine: Physically removing {self.chroma_path}...")
-                    # Note: On Windows, this might fail if a process still holds a lock.
-                    # We try it, and if it fails, we fall back to collection-based wipe.
-                    shutil.rmtree(self.chroma_path, ignore_errors=True)
-                
-                # Re-initialize client and collections
+                    try:
+                        shutil.rmtree(self.chroma_path)
+                    except Exception as e:
+                        # On Windows, locked files prevent deletion. We rename to isolate the "broken" DB.
+                        backup_path = f"{self.chroma_path}_corrupt_{int(datetime.now().timestamp())}"
+                        logging.error(f"⚠️ Chroma physical wipe blocked ({e}). Renaming corrupted store to {backup_path}")
+                        try:
+                            os.rename(self.chroma_path, backup_path)
+                        except Exception as rename_err:
+                            logging.error(f"❌ Isolation failed: {rename_err}")
+                            raise rename_err # Force fallback to logical wipe if even rename fails
+
+                # Re-initialize client and collections in a fresh directory
                 self.chroma_client = chromadb.PersistentClient(path=self.chroma_path)
                 self.collection = self.chroma_client.get_or_create_collection(name="user_memories")
                 self.knowledge_collection = self.chroma_client.get_or_create_collection(name="tars_knowledge")
                 self.summary_collection = self.chroma_client.get_or_create_collection(name="conversation_summaries")
+                
             except Exception as e:
-                logging.error(f"⚠️ Chroma physical wipe failed, falling back to logical wipe: {e}")
+                logging.error(f"⚠️ Chroma recovery mode: falling back to logical wipe: {e}")
+                if not self.chroma_client:
+                    self.chroma_client = chromadb.PersistentClient(path=self.chroma_path)
+                
                 for col_name in ["user_memories", "tars_knowledge", "conversation_summaries"]:
                     try:
                         self.chroma_client.delete_collection(col_name)
                     except: pass
-                # Still need to recreate them if they were deleted
+                    
                 self.collection = self.chroma_client.get_or_create_collection(name="user_memories")
                 self.knowledge_collection = self.chroma_client.get_or_create_collection(name="tars_knowledge")
                 self.summary_collection = self.chroma_client.get_or_create_collection(name="conversation_summaries")

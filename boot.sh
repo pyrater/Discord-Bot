@@ -53,15 +53,16 @@ else
     echo "✨ Venv looks good. Skipping install!"
 fi
 
-# 5. Start the Dashboard (Background)
-echo "📊 Launching Dashboard..."
-# Since the venv is active, 'streamlit' is directly in the PATH
-streamlit run /app/applications/tars/dashboard.py \
-    --global.developmentMode=false \
-    --server.port 8514 \
-    --server.address 0.0.0.0 \
-    --server.headless=true \
-    --server.fileWatcherType none &
+# 5. Start the Dashboard (Supervisor Loop - Background)
+echo "📊 Launching Dashboard Supervisor..."
+(
+while true; do
+    echo "🚀 Starting Dashboard Process..."
+    python /app/applications/tars/app.py
+    echo "⚠️ Dashboard exited. Restarting in 2s..."
+    sleep 2
+done
+) &
 
 # 6. Start the Bot (Supervisor Loop)
 echo "🤖 Launching TARS Supervisor..."
