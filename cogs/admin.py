@@ -195,22 +195,37 @@ class Admin(commands.Cog):
         # os._exit ignores exception handlers in the event loop and forcefully terminates
         os._exit(0)
     
-    @commands.hybrid_command(name="ingest", description="Run knowledge ingestion script. (Admin Only)")
-    async def ingest(self, ctx):
-        """Manually trigger the ingestion process."""
+    @commands.hybrid_command(name="ingest", description="Run ingestion scripts: !ingest [code|knowledge|all]. (Admin Only)")
+    async def ingest(self, ctx, target: str = "knowledge"):
+        """Manually trigger ingestion (code, knowledge, or all)."""
         if not self.is_admin(ctx):
             await ctx.send(f"🚫 Access Denied. You are not {settings.ADMIN_USER}.")
             return
             
-        await ctx.send("📥 **Starting Knowledge Ingestion...** This may take a moment.")
+        target = target.lower()
+        if target not in ["code", "knowledge", "all"]:
+            await ctx.send("❓ Invalid target. Use `!ingest code`, `!ingest knowledge`, or `!ingest all`.")
+            return
+
+        await ctx.send(f"📥 **Starting {target.capitalize()} Ingestion...** This may take a moment.")
         try:
-            # Resolve absolute path to the root directory's ingest_knowledge.py
             root_dir = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
-            ingest_path = os.path.join(root_dir, "ingest_knowledge.py")
             
-            # Run ingest_knowledge.py in the background
-            subprocess.Popen([sys.executable, ingest_path], cwd=root_dir)
-            await ctx.send("✅ Ingestion process started in the background.")
+            scripts_to_run = []
+            if target in ["knowledge", "all"]:
+                scripts_to_run.append("ingest_knowledge.py")
+            if target in ["code", "all"]:
+                scripts_to_run.append("ingest_codebase.py")
+
+            for script in scripts_to_run:
+                script_path = os.path.join(root_dir, script)
+                if os.path.exists(script_path):
+                    subprocess.Popen([sys.executable, script_path], cwd=root_dir)
+                    logging.info(f"🚀 Ingest: Started {script}")
+                else:
+                    await ctx.send(f"⚠️ Script not found: `{script}`")
+
+            await ctx.send(f"✅ Ingestion process ({target}) started in the background.")
         except Exception as e:
             await ctx.send(f"❌ Error starting ingestion: {e}")
 
