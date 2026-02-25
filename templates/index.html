@@ -1177,7 +1177,7 @@
                 <div class="hm-item">CPU<span class="hm-val" id="hm-cpu">{{ cpu | round | int }}%</span></div>
                 <div class="hm-item">RAM<span class="hm-val" id="hm-ram">{{ ram | round | int }}%</span></div>
                 <div class="hm-item">STATE<span class="hm-val {% if stress > 30 %}orange{% endif %}" id="hm-state">{{
-                        state[:7].upper() }}</span></div>
+                        state.upper() }}</span></div>
                 <div class="header-pulse"></div>
             </div>
         </header>

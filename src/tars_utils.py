@@ -30,31 +30,88 @@ def get_audit_logs():
         return df
     except: return pd.DataFrame()
 
+# Sentiment/Arousal Mapping for GoEmotions
+# Format: label: (valence [-1 to 1], arousal [0 to 1])
+# Higher arousal = higher "Neural Stress"
+EMOTION_PROPERTIES = {
+    'admiration': (0.8, 0.3), 'amusement': (0.8, 0.4), 'anger': (-0.8, 0.9), 'annoyance': (-0.4, 0.6),
+    'approval': (0.6, 0.2), 'caring': (0.7, 0.2), 'confusion': (-0.2, 0.5), 'curiosity': (0.5, 0.5),
+    'desire': (0.5, 0.6), 'disappointment': (-0.6, 0.3), 'disapproval': (-0.5, 0.4), 'disgust': (-0.7, 0.6),
+    'embarrassment': (-0.4, 0.7), 'excitement': (0.8, 0.8), 'fear': (-0.9, 0.9), 'gratitude': (0.9, 0.2),
+    'grief': (-0.9, 0.2), 'joy': (0.9, 0.6), 'love': (1.0, 0.5), 'nervousness': (-0.4, 0.8),
+    'optimism': (0.7, 0.4), 'pride': (0.7, 0.5), 'realization': (0.3, 0.4), 'relief': (0.6, 0.1),
+    'remorse': (-0.6, 0.4), 'sadness': (-0.8, 0.2), 'surprise': (0.6, 0.8), 'neutral': (0.0, 0.1),
+    'unknown': (0.0, 0.0)
+}
+
 def get_mood_metrics():
-    """Calculates neural stress (confidence of highest emotion) and the emotion name itself."""
+    """Calculates neural stress (volatility/arousal) and the dominant system state."""
     try:
         # Get the very latest log
         df = get_audit_logs().head(1)
         if df.empty:
             return 0.0, "STANDBY"
             
-        raw_mood = str(df.iloc[0]['mood'])
-        # Target format: "emotion (0.95)" or "emotion"
+        latest = df.iloc[0]
+        raw_mood = str(latest.get('mood', 'neutral'))
+        ts_str = str(latest.get('timestamp', ''))
+        
+        # 1. Parse emotion name and confidence
         if '(' in raw_mood and ')' in raw_mood:
-            state = raw_mood.split('(')[0].strip().upper()
+            emo_name = raw_mood.split('(')[0].strip().lower()
             try:
-                prob_part = raw_mood.split('(')[1].split(')')[0]
-                stress = float(prob_part)
+                conf = float(raw_mood.split('(')[1].split(')')[0])
             except:
-                stress = 0.5
+                conf = 0.5
         else:
-            state = raw_mood.strip().upper()
-            stress = 1.0 # Default to full intensity if no probability provided
-            
-        return stress, state
+            emo_name = raw_mood.strip().lower()
+            conf = 1.0
+
+        # 2. Calculate Base Stress (Arousal * Confidence)
+        emo_data = EMOTION_PROPERTIES.get(emo_name, EMOTION_PROPERTIES['unknown'])
+        valence, arousal = emo_data
+        
+        # Neural Stress is primarily linked to Arousal
+        # We also boost it slightly if valence is very negative
+        base_stress = arousal
+        if valence < -0.4:
+            base_stress = max(base_stress, abs(valence) * 0.8)
+        
+        stress_val = base_stress * conf
+
+        # 3. Apply Time-based Decay
+        try:
+            # Assumes format "2024-..." or ISO
+            last_time = pd.to_datetime(ts_str)
+            diff_sec = (datetime.now() - last_time).total_seconds()
+        except:
+            diff_sec = 0
+
+        # State Heuristics
+        if diff_sec > 600: # 10 mins
+            return 0.0, "IDLE"
+        elif diff_sec > 120: # 2 mins
+            return stress_val * 0.2, "STANDBY"
+        
+        # 4. Final state name logic
+        if stress_val > 0.6 and valence < 0:
+            state = "DISTURBED"
+        elif stress_val > 0.4 and valence < 0:
+            state = "ALERT"
+        elif stress_val > 0.5 and valence > 0.5:
+            state = "EXCITED"
+        elif valence > 0.3:
+            state = "STABLE"
+        elif emo_name == "neutral":
+            state = "NORMAL"
+        else:
+            state = emo_name.upper()
+
+        return stress_val, state
+
     except Exception as e:
         print(f"Error in get_mood_metrics: {e}")
-        return 0.0, "UNKNOWN"
+        return 0.0, "ERROR"
 
 def get_mood_paths(df):
     """Generates SVG paths for Valence and Arousal visualizations."""
