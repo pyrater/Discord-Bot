@@ -36,6 +36,7 @@ class Config:
         self.TRANSCRIPT_FILE = os.path.join(self.DATA_DIR, "transcript.md")
         self.SPEAKER_REGISTRY = os.path.join(self.DATA_DIR, "speaker_registry.json")
         self.AUDIO_DEBUG_LOG = os.path.join(self.DATA_DIR, "audio_debug.log")
+        self.STOP_FLAG = os.path.join(base_dir, "stop_bot.flag")
         
         # Token Limits
         # Use MAX_TOKENS (explicit) or TOKEN_LIMIT (legacy/user preference)

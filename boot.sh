@@ -3,6 +3,7 @@ export PYTHONPATH="${PYTHONPATH}:/app/applications/tars"
 
 # 1. Define paths
 VENV_PATH="/app/applications/tars/venv"
+FLAG_PATH="/app/applications/tars/stop_bot.flag"
 
 echo "🔍 Checking environment..."
 
@@ -58,17 +59,22 @@ fi
 echo "📊 Launching Dashboard Supervisor..."
 (
 while true; do
-    echo "🚀 Starting Dashboard Process..."
-    python -m src.app
-    echo "⚠️ Dashboard exited. Restarting in 2s..."
-    sleep 2
+    if [ -f "$FLAG_PATH" ]; then
+        echo "🛑 'stop_bot.flag' detected. Dashboard is paused."
+        sleep 5
+    else
+        echo "🚀 Starting Dashboard Process..."
+        python -m src.app
+        echo "⚠️ Dashboard exited. Restarting in 2s..."
+        sleep 2
+    fi
 done
 ) &
 
 # 6. Start the Bot (Supervisor Loop)
 echo "🤖 Launching TARS Supervisor..."
 while true; do
-    if [ -f "/app/stop_bot.flag" ]; then
+    if [ -f "$FLAG_PATH" ]; then
         echo "🛑 'stop_bot.flag' detected. Bot is paused."
         sleep 5
     else

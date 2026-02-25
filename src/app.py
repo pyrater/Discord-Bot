@@ -7,6 +7,7 @@ from flask import Flask, render_template, request, session, redirect, url_for, j
 import hmac
 import psutil
 import subprocess
+import signal
 from src.tars_utils import (
     get_mood_metrics, get_audit_logs, get_mood_paths, 
     get_graph_data, get_knowledge_data, get_memories, get_total_counts,
@@ -98,28 +99,48 @@ def get_stats():
 def system_action(action):
     if not check_auth(): return jsonify({"error": "unauthorized"}), 401
     
+    stop_flag_path = settings.STOP_FLAG
+    
     if action == "reboot":
-        # Signal script.py to reboot by killing processes (script.py should be in a loop)
+        # 1. Clear stop flag if it exists so bot can start again
+        if os.path.exists(stop_flag_path):
+            try: os.remove(stop_flag_path)
+            except: pass
+            
+        # 2. Signal script.py and self to reboot
         for proc in psutil.process_iter(['pid', 'name', 'cmdline']):
             try:
                 cmd = proc.info['cmdline'] or []
-                if 'python' in proc.info['name'].lower() and any("script.py" in arg for arg in cmd):
-                    proc.kill()
+                cmd_str = " ".join(cmd).lower()
+                if 'python' in proc.info['name'].lower() and ("src.script" in cmd_str or "src.app" in cmd_str):
+                    if proc.pid != os.getpid():
+                        proc.kill()
             except: pass
         
-        # Kill self to trigger reboot if supervised
-        import os, signal
+        # 3. Final kick to self
         os.kill(os.getpid(), signal.SIGTERM)
         return jsonify({"status": "reboot_sig_sent"})
         
     elif action == "shutdown":
-        with open("/app/stop_bot.flag", "w") as f: f.write("STOP")
+        # 1. Write stop flag to prevent supervisor from restarting anything
+        try:
+            with open(stop_flag_path, "w") as f: f.write("STOP")
+        except Exception as e:
+            return jsonify({"error": f"Failed to write stop flag: {e}"}), 500
+
+        # 2. Kill the bot process and any other dashboard instances
         for proc in psutil.process_iter(['pid', 'name', 'cmdline']):
             try:
                 cmd = proc.info['cmdline'] or []
-                if 'python' in proc.info['name'].lower() and any("script.py" in arg for arg in cmd):
-                    proc.kill()
+                cmd_str = " ".join(cmd).lower()
+                # Target both the bot and dashboard apps
+                if 'python' in proc.info['name'].lower() and ("src.script" in cmd_str or "src.app" in cmd_str):
+                    if proc.pid != os.getpid():
+                        proc.kill()
             except: pass
+
+        # 3. Terminate self - boot.sh will now see the flag and NOT restart the dashboard
+        os.kill(os.getpid(), signal.SIGTERM)
         return jsonify({"status": "shutdown_sig_sent"})
         
     return jsonify({"error": "invalid_action"}), 400

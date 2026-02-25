@@ -145,10 +145,6 @@ class CognitiveEngine:
         
         prompt = (
             f"### SYSTEM PERSONA ###\n{persona_block}\n"
-            f"### INTERACTION CONTEXT ###\n[Current Time: {now_str}] [Current Vibe: {vibe_str}]\n"
-            f"### KNOWN FACTS ###\n{facts_block}\n"
-            f"### RETRIEVED MEMORIES ###\n{memory_str}\n"
-            f"### RECENT HISTORY ###\n{history_str}\n"
             "### INSTRUCTIONS ###\n"
             "1. Stay in character (Tars).\n"
             "2. Reply naturally to the user.\n"
@@ -162,7 +158,11 @@ class CognitiveEngine:
             "   - Reminder: `ACTION: set_reminder(minutes=5, message='do thing')`\n"
             "4. When using an ACTION, you may provide a brief intro, but the ACTION must be on its own line.\n"
             "5. Do NOT include 'Generating...' metadata. Just the action.\n"
-            "6. **IMPORTANT**: If the user provides an image, DO NOT generate a new image unless EXPLICITLY instructed to 'mix', 'edit', 'change', or 'redraw' it. Typically, just comment on the image provided."
+            "6. **IMPORTANT**: If the user provides an image, DO NOT generate a new image unless EXPLICITLY instructed to 'mix', 'edit', 'change', or 'redraw' it. Typically, just comment on the image provided.\n"
+            f"### INTERACTION CONTEXT ###\n[Current Time: {now_str}] [Current Vibe: {vibe_str}]\n"
+            f"### KNOWN FACTS ###\n{facts_block}\n"
+            f"### RETRIEVED MEMORIES ###\n{memory_str}\n"
+            f"### RECENT HISTORY ###\n{history_str}"
         )
         
         # Voice-Specific Instruction Injection
@@ -724,6 +724,8 @@ Directly addressed to Tars? YES/NO:<end_of_turn>
         full_response_buffer = ""
         
         try:
+            logging.info(system_prompt)
+            logging.info(message_payload)
             stream = await self.ai_client.chat.completions.create(
                 model=self.model_name,
                 messages=[

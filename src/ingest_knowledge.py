@@ -14,7 +14,8 @@ logging.basicConfig(level=logging.INFO)
 # TARS Knowledge Sources
 SOURCES = [
     "https://github.com/TARS-AI-Community/TARS-AI/wiki",
-    "https://github.com/TARS-AI-Community/TARS-AI/blob/main/README.md"
+    "https://github.com/TARS-AI-Community/TARS-AI/blob/main/README.md",
+    "https://blog.networkchuck.com/posts/how-to-clone-a-voice/"
 ]
 
 # Wiki index targets to crawl all articles
