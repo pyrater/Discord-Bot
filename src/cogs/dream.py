@@ -17,8 +17,9 @@ class Dream(commands.Cog):
         
         try:
             # STEP 1: Fetch last 24 hours of interactions via Memory Engine
-            # This abstracts away the underlying DB schema (audit_logs vs interactions)
-            recent_logs = await self.bot.memory_engine.get_recent_interactions_async(limit=50, hours=24)
+            logging.info("🌙 Dream Cycle: Fetching recent interactions...")
+            # Increase limit to 1000 to get as much as possible for the context window
+            recent_logs = await self.bot.memory_engine.get_recent_interactions_async(limit=1000, hours=24)
             
             if not recent_logs:
                 await status_msg.edit(content="💭 No recent memories to dream about. My mind is blank...")
@@ -27,10 +28,20 @@ class Dream(commands.Cog):
             # STEP 2: Analyze and summarize with LLM
             await status_msg.edit(content="🧠 Analyzing patterns in recent memories...")
             
-            log_text = "\n".join([
-                f"[{log[3]}] User: {log[0][:100]}... | Bot: {log[1][:100]}... | Mood: {log[2]}"
-                for log in recent_logs[:20]
-            ])
+            # Token-aware log construction (up to ~3000 tokens)
+            log_entries = []
+            total_tokens = 0
+            MAX_LOG_TOKENS = 3000
+            
+            for log in recent_logs:
+                entry = f"[{log[3]}] User: {log[0][:150]}... | Bot: {log[1][:150]}... | Mood: {log[2]}"
+                tokens = self.bot.brain.count_tokens(entry)
+                if total_tokens + tokens > MAX_LOG_TOKENS:
+                    break
+                log_entries.append(entry)
+                total_tokens += tokens
+            
+            log_text = "\n".join(log_entries)
             
             consolidation_prompt = f"""Analyze these recent conversation logs and extract:
 1. Main themes discussed
@@ -84,6 +95,7 @@ Respond in JSON format:
             
             self.bot.memory_engine.store_memory(
                 user_id="SYSTEM_DREAM",
+                username="TARS",
                 prompt="Daily Dream Consolidation",
                 response=dream_summary,
                 guild_id=str(ctx.guild.id) if ctx.guild else "DM",
@@ -99,14 +111,16 @@ Respond in JSON format:
             )
             embed.add_field(name="🎭 Themes", value=", ".join(analysis.get("themes", ["unknown"])), inline=False)
             embed.add_field(name="💫 Emotions", value=", ".join(analysis.get("emotions", ["neutral"])), inline=False)
-            embed.set_footer(text=f"Analyzed {len(recent_logs)} recent interactions")
+            embed.set_footer(text=f"Analyzed {len(log_entries)} interactions from the last 24 hours")
             
             await status_msg.delete()
             await ctx.send(embed=embed)
             
             if img and isinstance(img, bytes):
+                logging.info("🎨 Dream Cycle: Sending dream art...")
                 await ctx.send(file=discord.File(io.BytesIO(img), filename="dream_cycle.png"))
             else:
+                logging.warning(f"🎨 Dream Cycle: Art generation failed: {img}")
                 await ctx.send(f"⚠️ Dream art generation failed: {img}")
                 
         except Exception as e:

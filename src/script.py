@@ -206,7 +206,7 @@ async def on_ready():
     
     # Load Cogs
     # Only loading Voice as requested (Admin, Dream, Memory disabled)
-    initial_extensions = ["src.cogs.voice", "src.cogs.admin", "src.cogs.reminders", "src.cogs.tools_cog"]
+    initial_extensions = ["src.cogs.voice", "src.cogs.admin", "src.cogs.reminders", "src.cogs.tools_cog", "src.cogs.dream"]
     for extension in initial_extensions:
         try:
             await bot.load_extension(extension)
