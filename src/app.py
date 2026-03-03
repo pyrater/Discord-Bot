@@ -195,6 +195,22 @@ def api_facts_list():
     except Exception as e:
         return jsonify({"error": str(e)}), 500
 
+@app.route('/api/facts/delete', methods=['POST'])
+def api_facts_delete():
+    if not check_auth(): return jsonify({"error": "unauthorized"}), 401
+    try:
+        fact_id = request.json.get("id")
+        if not fact_id: return jsonify({"error": "no id"}), 400
+
+        import sqlite3
+        conn = sqlite3.connect(DB_PATH)
+        conn.execute("DELETE FROM facts WHERE id = ?", (fact_id,))
+        conn.commit()
+        conn.close()
+        return jsonify({"status": "deleted"})
+    except Exception as e:
+        return jsonify({"error": str(e)}), 500
+
 @app.route('/api/facts/update', methods=['POST'])
 def api_facts_update():
     if not check_auth(): return jsonify({"error": "unauthorized"}), 401

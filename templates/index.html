@@ -1305,6 +1305,7 @@
                                             <th style="padding:8px; color:var(--cyan);">SUBJECT</th>
                                             <th style="padding:8px; color:var(--cyan);">PREDICATE</th>
                                             <th style="padding:8px; color:var(--cyan);">OBJECT</th>
+                                            <th style="padding:8px; color:var(--cyan);">ACTION</th>
                                         </tr>
                                     </thead>
                                     <tbody id="fact-table-body">
@@ -2308,6 +2309,9 @@
                     <td style="padding:8px;">
                         <input type="text" value="${f.object}" class="fact-input" data-id="${f.id}" data-key="object" style="width:100%; padding:4px; background:rgba(0,0,0,0.3); border:1px solid transparent; color:#81c784; font-size:9px; border-radius:3px;">
                     </td>
+                    <td style="padding:8px; text-align:center;">
+                        <button onclick="deleteFact(${f.id}, this)" style="background:rgba(211,47,47,0.15); border:1px solid rgba(211,47,47,0.4); color:#ef9a9a; padding:3px 8px; border-radius:4px; font-family:'Space Grotesk',sans-serif; font-size:9px; font-weight:700; letter-spacing:1px; cursor:pointer;">✕</button>
+                    </td>
                 `;
                 tbody.appendChild(tr);
             });
@@ -2353,6 +2357,30 @@
                         loadFacts();
                     }
                 });
+        }
+
+        function deleteFact(id, btn) {
+            btn.textContent = "…";
+            btn.disabled = true;
+            fetch('/api/facts/delete', {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify({ id: id })
+            })
+                .then(r => r.json())
+                .then(res => {
+                    if (res.status === 'deleted') {
+                        // Remove row from DOM
+                        btn.closest('tr').remove();
+                        // Keep local data in sync
+                        factsData = factsData.filter(f => f.id !== id);
+                        renderFactsGraph(factsData);
+                    } else {
+                        btn.textContent = "✕";
+                        btn.disabled = false;
+                    }
+                })
+                .catch(() => { btn.textContent = "✕"; btn.disabled = false; });
         }
 
         function renderFactsGraph(data) {

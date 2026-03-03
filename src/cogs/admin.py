@@ -2,8 +2,7 @@ import discord
 from discord.ext import commands
 import sqlite3
 import os
-import subprocess
-import sys
+import asyncio
 import logging
 from src.bot_config import settings
 
@@ -40,7 +39,7 @@ class Admin(commands.Cog):
         
         # Categorization
         categories = {
-            "🛠️ Core": ["vibe", "reset", "forget", "nuke", "ingest", "ingest_remove", "cmd", "log"],
+            "🛠️ Core": ["vibe", "reset", "nuke", "ingest", "ingest_remove", "cmd", "log"],
             "⏰ Reminders": ["timers", "kill"],
             "🎤 Voice": ["join", "leave"],
             "🦾 AI Tools": ["tools", "recall"] # recall is in memory_cog but feels like a tool
@@ -263,40 +262,37 @@ class Admin(commands.Cog):
         else:
             await ctx.send("🧠 Memory Engine offline.")
 
-    @commands.hybrid_command(name="ingest", description="Run ingestion scripts: !ingest [code|knowledge|all]. (Admin Only)")
+    @commands.hybrid_command(name="ingest", description="Run ingestion: !ingest [code|knowledge|all] [github_url]. (Admin Only)")
     @commands.has_permissions(administrator=True)
-    async def ingest(self, ctx, target: str = "knowledge"):
-        """Manually trigger ingestion (code, knowledge, or all)."""
+    async def ingest(self, ctx, target: str = "knowledge", url: str = None):
+        """Manually trigger ingestion (code, knowledge, or all). Optionally pass a GitHub URL for code ingestion."""
         if not self.is_admin(ctx):
             await ctx.send(f"🚫 Access Denied. You are not {settings.ADMIN_USER}.")
             return
-            
+
         target = target.lower()
         if target not in ["code", "knowledge", "all"]:
-            await ctx.send("❓ Invalid target. Use `!ingest code`, `!ingest knowledge`, or `!ingest all`.")
+            await ctx.send("❓ Invalid target. Use `!ingest code [github_url]`, `!ingest knowledge`, or `!ingest all`.")
             return
 
-        await ctx.send(f"📥 **Starting {target.capitalize()} Ingestion...** This may take a moment.")
+        status_msg = await ctx.send(f"📥 **Starting {target.capitalize()} Ingestion...** This may take a moment.")
+        asyncio.create_task(self._run_ingest(status_msg, target, url))
+
+    async def _run_ingest(self, status_msg, target, url):
+        """Background task: runs ingestion and edits the status message when done."""
+        from src.ingest_knowledge import ingest as ingest_knowledge
+        from src.ingest_codebase import ingest_github, DEFAULT_GITHUB_URL
+
         try:
-            root_dir = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
-            
-            scripts_to_run = []
             if target in ["knowledge", "all"]:
-                scripts_to_run.append("ingest_knowledge.py")
+                await ingest_knowledge()
             if target in ["code", "all"]:
-                scripts_to_run.append("ingest_codebase.py")
+                await ingest_github(url or DEFAULT_GITHUB_URL)
 
-            for script in scripts_to_run:
-                script_path = os.path.join(root_dir, script)
-                if os.path.exists(script_path):
-                    subprocess.Popen([sys.executable, script_path], cwd=root_dir)
-                    logging.info(f"🚀 Ingest: Started {script}")
-                else:
-                    await ctx.send(f"⚠️ Script not found: `{script}`")
-
-            await ctx.send(f"✅ Ingestion process ({target}) started in the background.")
+            await status_msg.edit(content=f"✅ **{target.capitalize()} Ingestion Complete.**")
         except Exception as e:
-            await ctx.send(f"❌ Error starting ingestion: {e}")
+            logging.error(f"Ingest task failed: {e}")
+            await status_msg.edit(content=f"❌ **Ingestion failed:** {e}")
 
     @commands.hybrid_command(name="cmd", description="List EVERYTHING Tars can do. (Admin Only)")
     @commands.has_permissions(administrator=True)

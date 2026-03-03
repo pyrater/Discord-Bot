@@ -32,7 +32,7 @@ class MemoryInspector(commands.Cog):
 
         # 1. FACTS (Always show top facts)
         try:
-            facts = await engine.get_facts(user_id)
+            facts = await engine.get_facts(user_id, guild_id)
             if facts:
                 embed.add_field(
                     name="🧩 Known Facts", 
