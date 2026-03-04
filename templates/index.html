@@ -1771,6 +1771,7 @@
                 document.getElementById('node-metadata').textContent = d.details || '';
                 document.getElementById('node-del-btn').style.display = 'inline-block';
                 window.selectedNodeId = d.id;
+                window.selectedNodeDbRef = d.db_ref || null;
 
                 const pulse = g.append("circle")
                     .attr("cx", d.x).attr("cy", d.y).attr("r", 5)
@@ -1854,13 +1855,22 @@
         }
 
         function deleteSelectedNode() {
-            if (!window.selectedNodeId) return;
-            fetch(`/api/node/delete/${window.selectedNodeId}`, { method: 'DELETE' })
+            if (!window.selectedNodeDbRef) {
+                alert('This node cannot be deleted (no database reference).');
+                return;
+            }
+            fetch('/api/node/delete', {
+                method: 'POST',
+                headers: {'Content-Type': 'application/json'},
+                body: JSON.stringify({db_ref: window.selectedNodeDbRef})
+            })
                 .then(r => r.json())
-                .then(() => {
+                .then(data => {
+                    if (data.error) { alert('Delete failed: ' + data.error); return; }
                     closeDrawer();
                     buildCogMap(parseInt(document.getElementById('node-slider').value));
-                });
+                })
+                .catch(e => alert('Delete error: ' + e));
         }
 
         /* ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
@@ -2383,6 +2393,28 @@
                 .catch(() => { btn.textContent = "✕"; btn.disabled = false; });
         }
 
+        function deleteGraphFact(factId, el) {
+            d3.select(el).attr("stroke", "rgba(239,83,80,0.9)").attr("stroke-width", 2);
+            fetch('/api/facts/delete', {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify({ id: factId })
+            })
+                .then(r => r.json())
+                .then(res => {
+                    if (res.status === 'deleted') {
+                        factsData = factsData.filter(f => f.id !== factId);
+                        // Also remove matching table row if visible
+                        const tableBtn = document.querySelector(`button[onclick="deleteFact(${factId}, this)"]`);
+                        if (tableBtn) tableBtn.closest('tr').remove();
+                        renderFactsGraph(factsData);
+                    } else {
+                        d3.select(el).attr("stroke", "rgba(0,248,255,0.2)").attr("stroke-width", 1);
+                    }
+                })
+                .catch(() => d3.select(el).attr("stroke", "rgba(0,248,255,0.2)").attr("stroke-width", 1));
+        }
+
         function renderFactsGraph(data) {
             const svg = d3.select('#facts-graph-svg');
             const container = document.getElementById('facts-graph-container');
@@ -2408,7 +2440,7 @@
                     entities.set(f.object, { id: f.object, name: f.object, group: 'object' });
                     nodes.push(entities.get(f.object));
                 }
-                links.push({ source: f.subject, target: f.object, label: f.predicate });
+                links.push({ source: f.subject, target: f.object, label: f.predicate, fact_id: f.id });
             });
 
             const link = svg.append("g")
@@ -2416,7 +2448,11 @@
                 .data(links)
                 .enter().append("line")
                 .attr("stroke", "rgba(0,248,255,0.2)")
-                .attr("stroke-width", 1);
+                .attr("stroke-width", 1)
+                .attr("cursor", "pointer")
+                .on("mouseover", function() { d3.select(this).attr("stroke", "rgba(239,83,80,0.7)").attr("stroke-width", 3); })
+                .on("mouseout", function() { d3.select(this).attr("stroke", "rgba(0,248,255,0.2)").attr("stroke-width", 1); })
+                .on("click", function(event, d) { deleteGraphFact(d.fact_id, this); });
 
             const linkLabels = svg.append("g")
                 .selectAll("text")

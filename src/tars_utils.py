@@ -211,20 +211,21 @@ def get_graph_data():
         try:
             conn = sqlite3.connect(f"file:{DB_PATH}?mode=ro", uri=True)
             # Exhaustive sweep of FACTS
-            df_facts = pd.read_sql_query("SELECT subject, predicate, object, timestamp FROM facts ORDER BY timestamp DESC", conn)
-            
+            df_facts = pd.read_sql_query("SELECT id, subject, predicate, object, timestamp FROM facts ORDER BY timestamp DESC", conn)
+
             # Exhaustive sweep of REMINDERS
             try:
-                df_reminders = pd.read_sql_query("SELECT reminder_text, due_date, status, created_at FROM reminders", conn)
+                df_reminders = pd.read_sql_query("SELECT id, note, due_time FROM reminders", conn)
                 for i, row in df_reminders.iterrows():
                     rid = f"rem_{i}"
                     nodes.append({
                         "id": rid,
-                        "name": row['reminder_text'][:20] + "...",
+                        "name": str(row['note'])[:20] + "...",
                         "color": "#f85149",
                         "size": 10,
                         "group": "data",
-                        "details": f"TASK: {row['reminder_text']}\nDUE: {row['due_date']}\nSTATUS: {row['status']}"
+                        "db_ref": f"reminder:{row['id']}",
+                        "details": f"TASK: {row['note']}\nDUE: {row['due_time']}"
                     })
                     links.append({"source": hub_reminders, "target": rid, "value": "data", "strength": 0.4})
             except: pass
@@ -265,6 +266,7 @@ def get_graph_data():
                         "color": "#58a6ff",
                         "size": 8,
                         "group": "data",
+                        "db_ref": f"fact:{row['id']}",
                         "details": f"FACT: {subj} {pred} {obj}\nLEARNED: {row['timestamp']}"
                     })
                     objects_map[obj_key] = obj_id
@@ -350,11 +352,12 @@ def get_graph_data():
                             parent_for_doc = f"vec_{col.name}"
 
                         nodes.append({
-                            "id": did, 
-                            "name": full_doc[:25].strip() + "...", 
-                            "color": colors[idx % len(colors)], 
-                            "size": 5, 
+                            "id": did,
+                            "name": full_doc[:25].strip() + "...",
+                            "color": colors[idx % len(colors)],
+                            "size": 5,
                             "group": "data",
+                            "db_ref": f"chroma:{col.name}:{doc_id}",
                             "details": full_doc
                         })
                         links.append({"source": parent_for_doc, "target": did, "value": "data"})

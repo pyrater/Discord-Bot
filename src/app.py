@@ -8,6 +8,7 @@ import hmac
 import psutil
 import subprocess
 import signal
+import chromadb
 from src.tars_utils import (
     get_mood_metrics, get_audit_logs, get_mood_paths, 
     get_graph_data, get_knowledge_data, get_memories, get_total_counts,
@@ -208,6 +209,45 @@ def api_facts_delete():
         conn.commit()
         conn.close()
         return jsonify({"status": "deleted"})
+    except Exception as e:
+        return jsonify({"error": str(e)}), 500
+
+@app.route('/api/node/delete', methods=['POST'])
+def api_node_delete():
+    if not check_auth(): return jsonify({"error": "unauthorized"}), 401
+    try:
+        db_ref = request.json.get("db_ref")
+        if not db_ref: return jsonify({"error": "no db_ref"}), 400
+
+        if db_ref.startswith("fact:"):
+            fact_id = db_ref.split(":", 1)[1]
+            import sqlite3
+            conn = sqlite3.connect(DB_PATH)
+            conn.execute("DELETE FROM facts WHERE id = ?", (fact_id,))
+            conn.commit()
+            conn.close()
+            return jsonify({"status": "deleted", "type": "fact"})
+
+        elif db_ref.startswith("reminder:"):
+            reminder_id = db_ref.split(":", 1)[1]
+            import sqlite3
+            conn = sqlite3.connect(DB_PATH)
+            conn.execute("DELETE FROM reminders WHERE id = ?", (reminder_id,))
+            conn.commit()
+            conn.close()
+            return jsonify({"status": "deleted", "type": "reminder"})
+
+        elif db_ref.startswith("chroma:"):
+            # Format: chroma:{collection_name}:{doc_id}
+            parts = db_ref.split(":", 2)
+            if len(parts) < 3: return jsonify({"error": "malformed chroma db_ref"}), 400
+            col_name, doc_id = parts[1], parts[2]
+            client = chromadb.PersistentClient(path=CHROMA_PATH)
+            collection = client.get_collection(col_name)
+            collection.delete(ids=[doc_id])
+            return jsonify({"status": "deleted", "type": "chroma"})
+
+        return jsonify({"error": "unknown db_ref type"}), 400
     except Exception as e:
         return jsonify({"error": str(e)}), 500
 
